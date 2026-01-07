@@ -1,0 +1,47 @@
+policy_name: Qwen/Qwen3-1.7B
+ref_name: Qwen/Qwen3-1.7B
+precision: bf16
+
+dataset:
+  dataset_name: Anthropic/hh-rlhf
+  subset: train[:20%]
+  val_ratio: 0.1
+  seed: 42
+  max_len: 512
+  
+dpo_training:
+  epochs: 1
+  batch_size: 16
+  eval_batch_size: 16
+  learning_rate: 5e-7
+  log_steps: 10
+  eval_steps: 500
+  save_steps: 500
+  gradient_accumulation: 4
+  max_grad_norm: 10
+  warmup_steps: 120
+  report: wandb_dpo_project
+  run_name: trl-dynamic-beta
+  save_dpo_dir: dpo_model
+  save_dir: trl_dynamic_beta_dpo
+
+risk_test:
+  delta: 0.1
+  lambda: 0.1
+  beta_warmup: 120
+
+beta_update:
+  beta_0: 0.1
+  gamma: 2.0
+  alpha: 0.005
+  beta_max: 2.0
+  beta_min: 0.0
+
+margin_log:
+  jsonl_sample_size: 64
+  save_per_rank: False
+  log_dir: logs/margins
+  dpo_log_dir: logs/dpo_margins
+
+
+
