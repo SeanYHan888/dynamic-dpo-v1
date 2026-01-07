@@ -156,7 +156,7 @@ def main():
     fp16 = prec == "fp16"
     bf16 = prec == "bf16"
 
-    training_args = SFTConfig(
+    sft_args = dict(
         output_dir=sft_cfg["save_dir"],
         learning_rate=float(sft_cfg["learning_rate"]),
         per_device_train_batch_size=int(sft_cfg["batch_size"]),
@@ -168,7 +168,6 @@ def main():
         save_strategy="steps",
         save_steps=int(sft_cfg["save_steps"]),
         warmup_steps=int(sft_cfg["warmup_steps"]),
-        max_seq_length=int(sft_cfg["max_length"]),
         fp16=fp16,
         bf16=bf16,
         report_to=["wandb"] if sft_cfg.get("wandb_project") else [],
@@ -177,6 +176,14 @@ def main():
         hub_model_id=sft_cfg.get("hub_model_id"),
         push_to_hub=bool(sft_cfg.get("push_to_hub")),
     )
+    max_len = int(sft_cfg["max_length"])
+    try:
+        training_args = SFTConfig(**sft_args, max_seq_length=max_len)
+    except TypeError as exc:
+        if "max_seq_length" in str(exc):
+            training_args = SFTConfig(**sft_args, max_length=max_len)
+        else:
+            raise
 
     def formatting_func(example):
         return format_messages(tok, example["messages"])
