@@ -351,6 +351,7 @@ dependencies = [
     { name = "alpaca-eval" },
     { name = "datasets" },
     { name = "hf-transfer" },
+    { name = "hf-transfer" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "peft" },
@@ -370,6 +371,7 @@ requires-dist = [
     { name = "alpaca-eval", specifier = ">=0.6.0" },
     { name = "datasets", specifier = ">=4.4.2" },
     { name = "hf-transfer", specifier = ">=0.1.9" },
+    { name = "hf-transfer", specifier = ">=0.1.9" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "numpy", specifier = ">=2.4.0" },
     { name = "peft", specifier = ">=0.18.0" },
@@ -378,8 +380,8 @@ requires-dist = [
     { name = "tokenizers", specifier = ">=0.22.2" },
     { name = "torch", specifier = ">=2.0.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "transformers", specifier = "==4.57.3" },
-    { name = "trl", specifier = "==0.26.2" },
+    { name = "transformers", specifier = ">=4.57.3" },
+    { name = "trl", specifier = ">=0.26.2" },
     { name = "wandb", specifier = ">=0.23.1" },
 ]
 
