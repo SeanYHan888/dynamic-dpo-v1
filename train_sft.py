@@ -81,6 +81,7 @@ def main():
         save_steps=int(sft_cfg["save_steps"]),
         warmup_steps=int(sft_cfg["warmup_steps"]),
         max_length=int(sft_cfg["max_length"]),
+        save_only_model=bool(sft_cfg.get("save_only_model", True)),
         fp16=fp16,
         bf16=bf16,
         report_to=["wandb"] if sft_cfg.get("wandb_project") else [],
