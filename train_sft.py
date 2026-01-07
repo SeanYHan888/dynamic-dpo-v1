@@ -114,8 +114,23 @@ def main():
     trainer.train()
     trainer.save_model()
 
-    if bool(sft_cfg.get("push_to_hub")):
-        trainer.push_to_hub()
+    # if bool(sft_cfg.get("push_to_hub")):
+    import torch.distributed as dist
+    is_main = (not dist.is_available()) or (not dist.is_initialized()) or (dist.get_rank() == 0)
+
+    if is_main:
+        hub_model_id = sft_cfg.get("hub_model_id")
+        if hub_model_id:
+            try:
+                push = input(f"\nDo you want to push the model to the Hub ({hub_model_id})? [y/N]: ").strip().lower()
+                if push == "y":
+                    print(f"Pushing model to {hub_model_id}...")
+                    trainer.push_to_hub()
+            except EOFError:
+                # Handle case where input is not available (e.g. non-interactive monitoring)
+                pass
+        else:
+            print("No hub_model_id configured, skipping interactive push.")
 
 
 if __name__ == "__main__":
