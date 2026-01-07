@@ -1,6 +1,14 @@
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
+from trl import SFTConfig, SFTTrainer
+
+try:
+    from trl import DataCollatorForCompletionOnlyLM
+except ImportError:
+    try:
+        from trl.trainer import DataCollatorForCompletionOnlyLM
+    except ImportError:
+        from trl.trainer.utils import DataCollatorForCompletionOnlyLM
 
 from data_process_sft import build_sft_dataset
 
