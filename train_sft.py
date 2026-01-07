@@ -204,7 +204,7 @@ def main():
                 config=config,
             )
 
-    trainer = SFTTrainer(
+    trainer_kwargs = dict(
         model=model,
         args=training_args,
         train_dataset=train_ds,
@@ -213,6 +213,30 @@ def main():
         data_collator=data_collator,
         formatting_func=formatting_func,
     )
+    while True:
+        try:
+            trainer = SFTTrainer(**trainer_kwargs)
+            break
+        except TypeError as exc:
+            msg = str(exc)
+            changed = False
+            if "tokenizer" in msg and "tokenizer" in trainer_kwargs:
+                trainer_kwargs.pop("tokenizer", None)
+                changed = True
+            if "formatting_func" in msg and "formatting_func" in trainer_kwargs:
+                trainer_kwargs.pop("formatting_func", None)
+                train_ds = train_ds.map(
+                    lambda ex: {"text": format_messages(tok, ex["messages"])}
+                )
+                eval_ds = eval_ds.map(
+                    lambda ex: {"text": format_messages(tok, ex["messages"])}
+                )
+                trainer_kwargs["train_dataset"] = train_ds
+                trainer_kwargs["eval_dataset"] = eval_ds
+                trainer_kwargs["dataset_text_field"] = "text"
+                changed = True
+            if not changed:
+                raise
 
     trainer.train()
     trainer.save_model()
