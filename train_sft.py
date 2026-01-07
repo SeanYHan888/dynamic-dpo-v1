@@ -1,7 +1,6 @@
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from trl import SFTConfig, SFTTrainer
-from trl.trainer.utils import DataCollatorForCompletionOnlyLM
 
 from data_process_sft import build_sft_dataset
 
@@ -9,28 +8,22 @@ import argparse
 import yaml
 
 
-LLAMA3_ASSISTANT_HEADER = "<|start_header_id|>assistant<|end_header_id|>\n\n"
+# Llama 3 format Jinja2 template
+LLAMA3_CHAT_TEMPLATE = (
+    "{% set loop_messages = messages %}"
+    "{% for message in loop_messages %}"
+    "{% set content = message['content'] %}"
+    "{% if loop.index0 == 0 %}"
+    "{{ '<|begin_of_text|>' }}"
+    "{% endif %}"
+    "{{ '<|start_header_id|>' + message['role'] + '<|end_header_id|>\\n\\n' + content | trim + '<|eot_id|>' }}"
+    "{% endfor %}"
+)
 
 
 def load_yaml(path: str):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
-
-
-def format_messages(tokenizer, messages):
-    if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template:
-        return tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False
-        )
-
-    parts = ["<|begin_of_text|>"]
-    for message in messages:
-        role = message["role"]
-        content = str(message["content"]).strip()
-        parts.append(
-            f"<|start_header_id|>{role}<|end_header_id|>\n\n{content}<|eot_id|>"
-        )
-    return "".join(parts)
 
 
 def main():
@@ -47,6 +40,10 @@ def main():
     tok = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     if tok.pad_token_id is None:
         tok.pad_token = tok.eos_token
+    
+    # Set the chat template for SFTTrainer to use
+    if not tok.chat_template:
+        tok.chat_template = LLAMA3_CHAT_TEMPLATE
 
     model = AutoModelForCausalLM.from_pretrained(model_name)
 
@@ -59,16 +56,12 @@ def main():
     train_ds = split["train"]
     eval_ds = split["test"]
 
-    response_template = sft_cfg.get("response_template", LLAMA3_ASSISTANT_HEADER)
-    data_collator = DataCollatorForCompletionOnlyLM(
-        tokenizer=tok,
-        response_template=response_template,
-    )
-
     prec = config["precision"].lower()
     fp16 = prec == "fp16"
     bf16 = prec == "bf16"
-
+    
+    # Use built-in completion_only_loss which leverages the tokenizer's chat template
+    # SFTTrainer will automatically look for the "messages" column in the dataset
     training_args = SFTConfig(
         output_dir=sft_cfg["save_dir"],
         learning_rate=float(sft_cfg["learning_rate"]),
@@ -90,24 +83,8 @@ def main():
         remove_unused_columns=False,
         hub_model_id=sft_cfg.get("hub_model_id"),
         push_to_hub=bool(sft_cfg.get("push_to_hub")),
-    )
-
-    max_length = int(sft_cfg["max_length"])
-
-    def format_and_tokenize(batch):
-        texts = [format_messages(tok, msgs) for msgs in batch["messages"]]
-        return tok(
-            texts,
-            truncation=True,
-            max_length=max_length,
-            add_special_tokens=False,
-        )
-
-    train_ds = train_ds.map(
-        format_and_tokenize, batched=True, remove_columns=train_ds.column_names
-    )
-    eval_ds = eval_ds.map(
-        format_and_tokenize, batched=True, remove_columns=eval_ds.column_names
+        dataset_text_field="messages",  # Explicitly tell it to look for messages
+        completion_only_loss=True,     # New TRL 0.20+ way to mask prompts
     )
 
     wandb_project = sft_cfg.get("wandb_project")
@@ -131,7 +108,7 @@ def main():
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
-        data_collator=data_collator,
+        tokenizer=tok, 
     )
 
     trainer.train()
