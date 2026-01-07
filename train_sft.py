@@ -63,15 +63,35 @@ if DataCollatorForCompletionOnlyLM is None:
             return labels
 
         def __call__(self, examples):
-            if "input_ids" in examples[0]:
+            if "input_ids" in examples[0] and isinstance(
+                examples[0]["input_ids"], (list, tuple)
+            ):
+                features = []
+                for ex in examples:
+                    features.append(
+                        {
+                            "input_ids": ex["input_ids"],
+                            "attention_mask": ex.get("attention_mask"),
+                        }
+                    )
                 batch = self.tokenizer.pad(
-                    examples,
+                    features,
                     padding=True,
                     pad_to_multiple_of=self.pad_to_multiple_of,
                     return_tensors="pt",
                 )
             else:
-                texts = [ex["text"] for ex in examples]
+                if "text" in examples[0]:
+                    texts = [ex["text"] for ex in examples]
+                elif "messages" in examples[0]:
+                    texts = [
+                        format_messages(self.tokenizer, ex["messages"])
+                        for ex in examples
+                    ]
+                else:
+                    raise ValueError(
+                        f"Unsupported batch keys: {sorted(examples[0].keys())}"
+                    )
                 batch = self.tokenizer(
                     texts,
                     padding=True,
