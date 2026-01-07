@@ -68,12 +68,11 @@ if DataCollatorForCompletionOnlyLM is None:
             ):
                 features = []
                 for ex in examples:
-                    features.append(
-                        {
-                            "input_ids": ex["input_ids"],
-                            "attention_mask": ex.get("attention_mask"),
-                        }
-                    )
+                    item = {"input_ids": ex["input_ids"]}
+                    attn = ex.get("attention_mask")
+                    if attn is not None:
+                        item["attention_mask"] = attn
+                    features.append(item)
                 batch = self.tokenizer.pad(
                     features,
                     padding=True,
