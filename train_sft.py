@@ -1,113 +1,6 @@
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from trl import SFTConfig, SFTTrainer
-
-try:
-    from trl import DataCollatorForCompletionOnlyLM
-except ImportError:
-    try:
-        from trl.trainer import DataCollatorForCompletionOnlyLM
-    except ImportError:
-        DataCollatorForCompletionOnlyLM = None
-
-if DataCollatorForCompletionOnlyLM is None:
-    import torch
-
-    class DataCollatorForCompletionOnlyLM:
-        def __init__(self, tokenizer, response_template, pad_to_multiple_of=None):
-            self.tokenizer = tokenizer
-            self.response_template = response_template
-            self.pad_to_multiple_of = pad_to_multiple_of
-            self.response_ids = tokenizer.encode(
-                response_template, add_special_tokens=False
-            )
-            self.header_start_ids = tokenizer.encode(
-                "<|start_header_id|>", add_special_tokens=False
-            )
-
-        @staticmethod
-        def _find_subsequence_positions(sequence, subsequence):
-            if not subsequence:
-                return []
-            positions = []
-            for i in range(len(sequence) - len(subsequence) + 1):
-                if sequence[i : i + len(subsequence)] == subsequence:
-                    positions.append(i)
-            return positions
-
-        def _build_labels(self, input_ids, attention_mask):
-            labels = [-100] * len(input_ids)
-            response_starts = self._find_subsequence_positions(
-                input_ids, self.response_ids
-            )
-            if not response_starts:
-                return labels
-
-            header_starts = self._find_subsequence_positions(
-                input_ids, self.header_start_ids
-            )
-            for start in response_starts:
-                content_start = start + len(self.response_ids)
-                next_header = None
-                for hs in header_starts:
-                    if hs > content_start:
-                        next_header = hs
-                        break
-                content_end = next_header if next_header is not None else len(input_ids)
-                for i in range(content_start, content_end):
-                    labels[i] = input_ids[i]
-
-            for i, mask in enumerate(attention_mask):
-                if mask == 0:
-                    labels[i] = -100
-            return labels
-
-        def __call__(self, examples):
-            if "input_ids" in examples[0] and isinstance(
-                examples[0]["input_ids"], (list, tuple)
-            ):
-                features = []
-                for ex in examples:
-                    item = {"input_ids": ex["input_ids"]}
-                    attn = ex.get("attention_mask")
-                    if attn is not None:
-                        item["attention_mask"] = attn
-                    features.append(item)
-                batch = self.tokenizer.pad(
-                    features,
-                    padding=True,
-                    pad_to_multiple_of=self.pad_to_multiple_of,
-                    return_tensors="pt",
-                )
-            else:
-                if "text" in examples[0]:
-                    texts = [ex["text"] for ex in examples]
-                elif "messages" in examples[0]:
-                    texts = [
-                        format_messages(self.tokenizer, ex["messages"])
-                        for ex in examples
-                    ]
-                else:
-                    raise ValueError(
-                        f"Unsupported batch keys: {sorted(examples[0].keys())}"
-                    )
-                batch = self.tokenizer(
-                    texts,
-                    padding=True,
-                    truncation=True,
-                    pad_to_multiple_of=self.pad_to_multiple_of,
-                    return_tensors="pt",
-                )
-
-            labels = torch.full_like(batch["input_ids"], -100)
-            for i in range(batch["input_ids"].size(0)):
-                labels_i = self._build_labels(
-                    batch["input_ids"][i].tolist(),
-                    batch["attention_mask"][i].tolist(),
-                )
-                labels[i] = torch.tensor(labels_i, dtype=batch["input_ids"].dtype)
-            batch["labels"] = labels
-            return batch
+from trl import SFTConfig, SFTTrainer, DataCollatorForCompletionOnlyLM
 
 from data_process_sft import build_sft_dataset
 
@@ -175,7 +68,7 @@ def main():
     fp16 = prec == "fp16"
     bf16 = prec == "bf16"
 
-    sft_args = dict(
+    training_args = SFTConfig(
         output_dir=sft_cfg["save_dir"],
         learning_rate=float(sft_cfg["learning_rate"]),
         per_device_train_batch_size=int(sft_cfg["batch_size"]),
@@ -187,6 +80,7 @@ def main():
         save_strategy="steps",
         save_steps=int(sft_cfg["save_steps"]),
         warmup_steps=int(sft_cfg["warmup_steps"]),
+        max_length=int(sft_cfg["max_length"]),
         fp16=fp16,
         bf16=bf16,
         report_to=["wandb"] if sft_cfg.get("wandb_project") else [],
@@ -195,29 +89,15 @@ def main():
         hub_model_id=sft_cfg.get("hub_model_id"),
         push_to_hub=bool(sft_cfg.get("push_to_hub")),
     )
-    max_len = int(sft_cfg["max_length"])
-    try:
-        training_args = SFTConfig(**sft_args, max_seq_length=max_len)
-    except TypeError as exc:
-        if "max_seq_length" in str(exc):
-            training_args = SFTConfig(**sft_args, max_length=max_len)
-        else:
-            raise
 
-    has_chat_template = bool(getattr(tok, "chat_template", None))
-    if not has_chat_template:
-        train_ds = train_ds.map(
-            lambda ex: {"text": format_messages(tok, ex["messages"])},
-            remove_columns=train_ds.column_names,
-        )
-        eval_ds = eval_ds.map(
-            lambda ex: {"text": format_messages(tok, ex["messages"])},
-            remove_columns=eval_ds.column_names,
-        )
-        formatting_func = None
-    else:
-        def formatting_func(example):
-            return format_messages(tok, example["messages"])
+    train_ds = train_ds.map(
+        lambda ex: {"text": format_messages(tok, ex["messages"])},
+        remove_columns=train_ds.column_names,
+    )
+    eval_ds = eval_ds.map(
+        lambda ex: {"text": format_messages(tok, ex["messages"])},
+        remove_columns=eval_ds.column_names,
+    )
 
     wandb_project = sft_cfg.get("wandb_project")
     if wandb_project:
@@ -235,44 +115,15 @@ def main():
                 config=config,
             )
 
-    trainer_kwargs = dict(
+    trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         tokenizer=tok,
         data_collator=data_collator,
-        formatting_func=formatting_func,
+        dataset_text_field="text",
     )
-    if not has_chat_template:
-        trainer_kwargs["dataset_text_field"] = "text"
-    while True:
-        try:
-            trainer = SFTTrainer(**trainer_kwargs)
-            break
-        except TypeError as exc:
-            msg = str(exc)
-            changed = False
-            if "tokenizer" in msg and "tokenizer" in trainer_kwargs:
-                trainer_kwargs.pop("tokenizer", None)
-                changed = True
-            if "formatting_func" in msg and "formatting_func" in trainer_kwargs:
-                trainer_kwargs.pop("formatting_func", None)
-                train_ds = train_ds.map(
-                    lambda ex: {"text": format_messages(tok, ex["messages"])}
-                )
-                eval_ds = eval_ds.map(
-                    lambda ex: {"text": format_messages(tok, ex["messages"])}
-                )
-                trainer_kwargs["train_dataset"] = train_ds
-                trainer_kwargs["eval_dataset"] = eval_ds
-                trainer_kwargs["dataset_text_field"] = "text"
-                changed = True
-            if "dataset_text_field" in msg and "dataset_text_field" in trainer_kwargs:
-                trainer_kwargs.pop("dataset_text_field", None)
-                changed = True
-            if not changed:
-                raise
 
     trainer.train()
     trainer.save_model()
