@@ -25,6 +25,20 @@ dpo_training:
   save_dpo_dir: dpo_model
   save_dir: trl_dynamic_beta_dpo
 
+sft_training:
+  learning_rate: 5e-6
+  batch_size: 16
+  eval_batch_size: 16
+  epochs: 1
+  log_steps: 10
+  wandb_project: hh-llama32-1b-sft
+  save_steps: 500
+  warmup_steps: 120
+  max_length: 512
+  save_dir: sft_model
+  push_to_hub: False
+  hub_model_id: W-61/hh-llama32-1b-sft
+
 risk_test:
   delta: 0.1
   lambda: 0.1
