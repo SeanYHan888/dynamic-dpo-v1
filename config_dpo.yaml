@@ -36,6 +36,7 @@ sft_training:
   warmup_steps: 120
   max_length: 512
   save_dir: sft_model
+  save_only_model: True
   push_to_hub: False
   hub_model_id: W-61/hh-llama32-1b-sft
 
@@ -56,5 +57,4 @@ margin_log:
   save_per_rank: False
   log_dir: logs/margins
   dpo_log_dir: logs/dpo_margins
-
 
