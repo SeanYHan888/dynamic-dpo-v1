@@ -205,8 +205,20 @@ def main():
         else:
             raise
 
-    def formatting_func(example):
-        return format_messages(tok, example["messages"])
+    has_chat_template = bool(getattr(tok, "chat_template", None))
+    if not has_chat_template:
+        train_ds = train_ds.map(
+            lambda ex: {"text": format_messages(tok, ex["messages"])},
+            remove_columns=train_ds.column_names,
+        )
+        eval_ds = eval_ds.map(
+            lambda ex: {"text": format_messages(tok, ex["messages"])},
+            remove_columns=eval_ds.column_names,
+        )
+        formatting_func = None
+    else:
+        def formatting_func(example):
+            return format_messages(tok, example["messages"])
 
     wandb_project = sft_cfg.get("wandb_project")
     if wandb_project:
@@ -233,6 +245,8 @@ def main():
         data_collator=data_collator,
         formatting_func=formatting_func,
     )
+    if not has_chat_template:
+        trainer_kwargs["dataset_text_field"] = "text"
     while True:
         try:
             trainer = SFTTrainer(**trainer_kwargs)
@@ -254,6 +268,9 @@ def main():
                 trainer_kwargs["train_dataset"] = train_ds
                 trainer_kwargs["eval_dataset"] = eval_ds
                 trainer_kwargs["dataset_text_field"] = "text"
+                changed = True
+            if "dataset_text_field" in msg and "dataset_text_field" in trainer_kwargs:
+                trainer_kwargs.pop("dataset_text_field", None)
                 changed = True
             if not changed:
                 raise
