@@ -108,6 +108,7 @@ def main():
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
+        processing_class=tok,
     )
 
     trainer.train()
