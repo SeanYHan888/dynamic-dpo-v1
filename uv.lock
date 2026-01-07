@@ -342,8 +342,8 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.16.3" },
     { name = "tokenizers", specifier = ">=0.22.2" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "transformers", specifier = ">=4.57.3" },
-    { name = "trl", specifier = ">=0.26.2" },
+    { name = "transformers", specifier = "==4.57.3" },
+    { name = "trl", specifier = "==0.26.2" },
     { name = "wandb", specifier = ">=0.23.1" },
 ]
 
