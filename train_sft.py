@@ -159,13 +159,22 @@ def main():
         push_to_hub=bool(sft_cfg.get("push_to_hub")),
     )
 
+    max_length = int(sft_cfg["max_length"])
+
+    def format_and_tokenize(batch):
+        texts = [format_messages(tok, msgs) for msgs in batch["messages"]]
+        return tok(
+            texts,
+            truncation=True,
+            max_length=max_length,
+            add_special_tokens=False,
+        )
+
     train_ds = train_ds.map(
-        lambda ex: {"text": format_messages(tok, ex["messages"])},
-        remove_columns=train_ds.column_names,
+        format_and_tokenize, batched=True, remove_columns=train_ds.column_names
     )
     eval_ds = eval_ds.map(
-        lambda ex: {"text": format_messages(tok, ex["messages"])},
-        remove_columns=eval_ds.column_names,
+        format_and_tokenize, batched=True, remove_columns=eval_ds.column_names
     )
 
     wandb_project = sft_cfg.get("wandb_project")
@@ -190,7 +199,6 @@ def main():
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         data_collator=data_collator,
-        dataset_text_field="text",
     )
 
     trainer.train()
