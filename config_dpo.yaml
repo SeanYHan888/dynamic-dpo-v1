@@ -38,7 +38,7 @@ sft_training:
   save_dir: sft_model
   save_only_model: True
   push_to_hub: False
-  hub_model_id: W-61/hh-llama32-1b-sft
+  hub_model_id: W-61/hh-llama32-1b-sft-100-train
 
 risk_test:
   delta: 0.1
