@@ -8,7 +8,87 @@ except ImportError:
     try:
         from trl.trainer import DataCollatorForCompletionOnlyLM
     except ImportError:
-        from trl.trainer.utils import DataCollatorForCompletionOnlyLM
+        DataCollatorForCompletionOnlyLM = None
+
+if DataCollatorForCompletionOnlyLM is None:
+    import torch
+
+    class DataCollatorForCompletionOnlyLM:
+        def __init__(self, tokenizer, response_template, pad_to_multiple_of=None):
+            self.tokenizer = tokenizer
+            self.response_template = response_template
+            self.pad_to_multiple_of = pad_to_multiple_of
+            self.response_ids = tokenizer.encode(
+                response_template, add_special_tokens=False
+            )
+            self.header_start_ids = tokenizer.encode(
+                "<|start_header_id|>", add_special_tokens=False
+            )
+
+        @staticmethod
+        def _find_subsequence_positions(sequence, subsequence):
+            if not subsequence:
+                return []
+            positions = []
+            for i in range(len(sequence) - len(subsequence) + 1):
+                if sequence[i : i + len(subsequence)] == subsequence:
+                    positions.append(i)
+            return positions
+
+        def _build_labels(self, input_ids, attention_mask):
+            labels = [-100] * len(input_ids)
+            response_starts = self._find_subsequence_positions(
+                input_ids, self.response_ids
+            )
+            if not response_starts:
+                return labels
+
+            header_starts = self._find_subsequence_positions(
+                input_ids, self.header_start_ids
+            )
+            for start in response_starts:
+                content_start = start + len(self.response_ids)
+                next_header = None
+                for hs in header_starts:
+                    if hs > content_start:
+                        next_header = hs
+                        break
+                content_end = next_header if next_header is not None else len(input_ids)
+                for i in range(content_start, content_end):
+                    labels[i] = input_ids[i]
+
+            for i, mask in enumerate(attention_mask):
+                if mask == 0:
+                    labels[i] = -100
+            return labels
+
+        def __call__(self, examples):
+            if "input_ids" in examples[0]:
+                batch = self.tokenizer.pad(
+                    examples,
+                    padding=True,
+                    pad_to_multiple_of=self.pad_to_multiple_of,
+                    return_tensors="pt",
+                )
+            else:
+                texts = [ex["text"] for ex in examples]
+                batch = self.tokenizer(
+                    texts,
+                    padding=True,
+                    truncation=True,
+                    pad_to_multiple_of=self.pad_to_multiple_of,
+                    return_tensors="pt",
+                )
+
+            labels = torch.full_like(batch["input_ids"], -100)
+            for i in range(batch["input_ids"].size(0)):
+                labels_i = self._build_labels(
+                    batch["input_ids"][i].tolist(),
+                    batch["attention_mask"][i].tolist(),
+                )
+                labels[i] = torch.tensor(labels_i, dtype=batch["input_ids"].dtype)
+            batch["labels"] = labels
+            return batch
 
 from data_process_sft import build_sft_dataset
 
