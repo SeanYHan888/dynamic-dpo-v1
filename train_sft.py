@@ -189,7 +189,6 @@ def main():
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
-        tokenizer=tok,
         data_collator=data_collator,
         dataset_text_field="text",
     )
