@@ -127,16 +127,6 @@ def main() -> None:
     if rollout_cfg["reward_load_in_8bit"]:
         load_in_8bit = True
 
-    judge = RMJudge(
-        model_name=rollout_cfg["reward_model"],
-        precision=rollout_cfg["reward_precision"] or config.get("precision"),
-        device_map=rollout_cfg["reward_device_map"],
-        load_in_8bit=load_in_8bit,
-        batch_size=int(rollout_cfg["reward_batch_size"]),
-        max_length=rollout_cfg["reward_max_length"],
-        seed=int(rollout_cfg["seed"]),
-    )
-
     output_dir = rollout_cfg["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
     responses_path = os.path.join(output_dir, "rollout_responses.jsonl")
@@ -149,10 +139,9 @@ def main() -> None:
         "k_candidates": responses_per_prompt,
         "generator_model": model_name,
     }
-    meta_base["judge"] = "rm" if judge_name in ("rm", "reward", "pairrm") else judge_name
-    if judge_name in ("rm", "reward", "pairrm"):
-        meta_base["reward_model"] = rollout_cfg["reward_model"]
-        meta_base["reward_quantization"] = "8bit" if load_in_8bit else "none"
+    meta_base["judge"] = "rm"
+    meta_base["reward_model"] = rollout_cfg["reward_model"]
+    meta_base["reward_quantization"] = "8bit" if load_in_8bit else "none"
     manifest = {
         "dataset_name": rollout_cfg["dataset_name"],
         "subset": rollout_cfg["subset"],
@@ -170,12 +159,12 @@ def main() -> None:
     generated = 0
     buffer: List[dict] = []
 
-    def flush(batch: List[dict], responses_f, judged_f) -> bool:
-        nonlocal processed, generated
+    def flush(batch: List[dict], responses_f) -> bool:
+        nonlocal generated
         candidates = generator.generate_batch([b["prompt_text"] for b in batch])
         for item, cand_list in tqdm(
             list(zip(batch, candidates)),
-            desc="RM judging",
+            desc="Saving responses",
             leave=False,
         ):
             responses = [c.strip() for c in cand_list]
@@ -191,30 +180,11 @@ def main() -> None:
             )
             responses_f.flush()
             generated += 1
-
-            nonempty = [(idx, resp) for idx, resp in enumerate(responses) if resp]
-            if len(nonempty) < 2:
-                continue
-            idx_map, cleaned = zip(*nonempty)
-            best_local, worst_local = judge.rank(item["prompt_messages"], list(cleaned))
-            best_idx = idx_map[best_local]
-            worst_idx = idx_map[worst_local]
-            record = {
-                "prompt_messages": item["prompt_messages"],
-                "chosen": [{"role": "assistant", "content": responses[best_idx]}],
-                "rejected": [{"role": "assistant", "content": responses[worst_idx]}],
-                "metadata": {**meta_base, "reference_response": item["reference_response"]},
-            }
-            judged_f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            judged_f.flush()
-            processed += 1
-            if limit is not None and processed >= int(limit):
+            if limit is not None and generated >= int(limit):
                 return True
         return False
 
-    with open(responses_path, "w", encoding="utf-8") as responses_f, open(
-        judged_path, "w", encoding="utf-8"
-    ) as judged_f:
+    with open(responses_path, "w", encoding="utf-8") as responses_f:
         for row in tqdm(raw_ds, desc="Rollout prompts"):
             text = row.get("chosen") if isinstance(row, dict) else None
             if not text:
@@ -235,13 +205,54 @@ def main() -> None:
 
             if len(buffer) < batch_size:
                 continue
-            if flush(buffer, responses_f, judged_f):
+            if flush(buffer, responses_f):
                 buffer = []
                 break
             buffer = []
 
-        if buffer and (limit is None or processed < int(limit)):
-            flush(buffer, responses_f, judged_f)
+        if buffer and (limit is None or generated < int(limit)):
+            flush(buffer, responses_f)
+
+    if load_in_8bit:
+        # Release the generator to free VRAM before loading the RM.
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    judge = RMJudge(
+        model_name=rollout_cfg["reward_model"],
+        precision=rollout_cfg["reward_precision"] or config.get("precision"),
+        device_map=rollout_cfg["reward_device_map"],
+        load_in_8bit=load_in_8bit,
+        batch_size=int(rollout_cfg["reward_batch_size"]),
+        max_length=rollout_cfg["reward_max_length"],
+        seed=int(rollout_cfg["seed"]),
+    )
+
+    with open(responses_path, "r", encoding="utf-8") as responses_f, open(
+        judged_path, "w", encoding="utf-8"
+    ) as judged_f:
+        for line in tqdm(responses_f, desc="RM judging"):
+            item = json.loads(line)
+            responses = item.get("responses", [])
+            nonempty = [(idx, resp) for idx, resp in enumerate(responses) if resp]
+            if len(nonempty) < 2:
+                continue
+            idx_map, cleaned = zip(*nonempty)
+            best_local, worst_local = judge.rank(item["prompt_messages"], list(cleaned))
+            best_idx = idx_map[best_local]
+            worst_idx = idx_map[worst_local]
+            record = {
+                "prompt_messages": item["prompt_messages"],
+                "chosen": [{"role": "assistant", "content": responses[best_idx]}],
+                "rejected": [{"role": "assistant", "content": responses[worst_idx]}],
+                "metadata": meta_base,
+            }
+            judged_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            judged_f.flush()
+            processed += 1
+            if limit is not None and processed >= int(limit):
+                break
 
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
