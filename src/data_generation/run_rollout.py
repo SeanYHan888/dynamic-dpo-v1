@@ -142,11 +142,16 @@ def main() -> None:
         # vLLM manages its own tokenizer/model loading
         # We need a temporary tokenizer just for prompt formatting if not loaded
         # But VLLMRolloutGenerator creates one. We'll use a cheap local one for templating logic.
-        print("Initializing vLLM generator...")
+        dtype_map = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
+        precision = config.get("precision", "auto")
+        vllm_dtype = dtype_map.get(precision, precision) # Fallback to auto or direct string
+        
+        print(f"Initializing vLLM generator with dtype={vllm_dtype}...")
         generator = VLLMRolloutGenerator(
             model_name=model_name,
             seed=int(rollout_cfg["seed"]),
             gpu_memory_utilization=float(rollout_cfg["gpu_memory_utilization"]),
+            dtype=vllm_dtype,
         )
         tokenizer = generator.tokenizer # Use vLLM's tokenizer
         
@@ -173,8 +178,6 @@ def main() -> None:
             "top_p": float(rollout_cfg["top_p"]),
             "max_new_tokens": int(rollout_cfg["max_new_tokens"]),
             "min_new_tokens": int(rollout_cfg["min_new_tokens"]),
-            # Pass EOS token explicitly for Llama 3 speedup
-            "eos_token_id": tokenizer.convert_tokens_to_ids("<|eot_id|>"),
         }
         generator = RolloutGenerator(
             model=model,
