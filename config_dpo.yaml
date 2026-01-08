@@ -59,6 +59,9 @@ margin_log:
   dpo_log_dir: logs/dpo_margins
 
 rollout:
+  engine: vllm
+  vllm_batch_size: 500
+  gpu_memory_utilization: 0.9
   model_name: W-61/hh-llama32-1b-sft
   output_dir: rollout_output
   batch_size: 5
