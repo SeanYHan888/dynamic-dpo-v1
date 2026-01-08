@@ -3,9 +3,32 @@
 # run_and_shutdown.sh
 # Script to run a job and automatically shut down the RunPod instance.
 
-MODE="${1:-rollout}"
-CONFIG_PATH="${2:-config_dpo.yaml}"
-NO_AUTO_SHUT="${3:-}"
+MODE="rollout"
+CONFIG_PATH="config_dpo.yaml"
+NO_AUTO_SHUT=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        rollout|sft)
+            MODE="$1"
+            ;;
+        -noautoshut)
+            NO_AUTO_SHUT=1
+            ;;
+        --config)
+            CONFIG_PATH="$2"
+            shift
+            ;;
+        *.yaml)
+            CONFIG_PATH="$1"
+            ;;
+        *)
+            echo "Unknown argument: $1 (use 'rollout', 'sft', '-noautoshut', or --config <path>)"
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 if [ "$MODE" = "rollout" ]; then
     echo "Starting rollout data generation..."
@@ -63,7 +86,7 @@ else
 fi
 
 # Shutdown logic
-if [ "$NO_AUTO_SHUT" = "-noautoshut" ]; then
+if [ $NO_AUTO_SHUT -eq 1 ]; then
     echo "Skipping auto-shutdown (flag -noautoshut set)."
 elif [ -z "$RUNPOD_POD_ID" ]; then
     echo "RUNPOD_POD_ID is not set. Are you running in RunPod?"
