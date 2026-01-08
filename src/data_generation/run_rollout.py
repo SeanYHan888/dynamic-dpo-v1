@@ -49,6 +49,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debug_log_empty_only", action="store_true", default=None)
     parser.add_argument("--log_throughput", action="store_true", default=None)
     parser.add_argument("--no_log_throughput", action="store_true", default=None)
+    parser.add_argument("--engine", type=str, default="st", choices=["st", "vllm"])
+    parser.add_argument("--gpu_memory_utilization", type=float, default=None)
+    parser.add_argument("--vllm_batch_size", type=int, default=None)
     return parser.parse_args()
 
 
@@ -103,6 +106,9 @@ def resolve_rollout_cfg(config: Dict, args: argparse.Namespace) -> Dict:
         "debug_log_max": pick("debug_log_max", None),
         "flush_every_batches": pick("flush_every_batches", 1),
         "log_throughput": rollout_cfg.get("log_throughput", True),
+        "engine": args.engine,
+        "gpu_memory_utilization": pick("gpu_memory_utilization", 0.9),
+        "vllm_batch_size": pick("vllm_batch_size", 500),
     }
 
 
@@ -128,34 +134,57 @@ def main() -> None:
         raise ValueError("Missing policy_name in config or --model_name override.")
 
     seed_everything(int(rollout_cfg["seed"]))
-    tokenizer = load_tokenizer(model_name, padding_side="left")
-    device_map = rollout_cfg["device_map"] or "auto"
-    model = load_model(
-        model_name,
-        precision=config.get("precision"),
-        device_map=device_map,
-    )
-    model.eval()
-    device = next(model.parameters()).device
+    
+    # Setup Generator
+    if rollout_cfg["engine"] == "vllm":
+        from .rollout import VLLMRolloutGenerator
+        
+        # vLLM manages its own tokenizer/model loading
+        # We need a temporary tokenizer just for prompt formatting if not loaded
+        # But VLLMRolloutGenerator creates one. We'll use a cheap local one for templating logic.
+        print("Initializing vLLM generator...")
+        generator = VLLMRolloutGenerator(
+            model_name=model_name,
+            seed=int(rollout_cfg["seed"]),
+            gpu_memory_utilization=float(rollout_cfg["gpu_memory_utilization"]),
+        )
+        tokenizer = generator.tokenizer # Use vLLM's tokenizer
+        
+        # vLLM is efficient with large batches
+        batch_size = int(rollout_cfg["vllm_batch_size"])
+        model = None # No HF model object
+    else:
+        # Standard HF path
+        tokenizer = load_tokenizer(model_name, padding_side="left")
+        device_map = rollout_cfg["device_map"] or "auto"
+        model = load_model(
+            model_name,
+            precision=config.get("precision"),
+            device_map=device_map,
+        )
+        model.eval()
+        device = next(model.parameters()).device
+        print(f"Generator device: {device}")
+        
+        responses_per_prompt = int(rollout_cfg["responses_per_prompt"])
+        gen_kwargs = {
+            "do_sample": True,
+            "temperature": float(rollout_cfg["temperature"]),
+            "top_p": float(rollout_cfg["top_p"]),
+            "max_new_tokens": int(rollout_cfg["max_new_tokens"]),
+            "min_new_tokens": int(rollout_cfg["min_new_tokens"]),
+            # Pass EOS token explicitly for Llama 3 speedup
+            "eos_token_id": tokenizer.convert_tokens_to_ids("<|eot_id|>"),
+        }
+        generator = RolloutGenerator(
+            model=model,
+            tokenizer=tokenizer,
+            num_return_sequences=responses_per_prompt,
+            **gen_kwargs,
+        )
+        batch_size = int(rollout_cfg["batch_size"])
 
-    print(f"Generator device: {device}")
-    if getattr(model, "hf_device_map", None):
-        print(f"Generator hf_device_map: {model.hf_device_map}")
-
-    responses_per_prompt = int(rollout_cfg["responses_per_prompt"])
-    gen_kwargs = {
-        "do_sample": True,
-        "temperature": float(rollout_cfg["temperature"]),
-        "top_p": float(rollout_cfg["top_p"]),
-        "max_new_tokens": int(rollout_cfg["max_new_tokens"]),
-        "min_new_tokens": int(rollout_cfg["min_new_tokens"]),
-    }
-    generator = RolloutGenerator(
-        model=model,
-        tokenizer=tokenizer,
-        num_return_sequences=responses_per_prompt,
-        **gen_kwargs,
-    )
+    # Common Logic
     judge_name = str(rollout_cfg["judge"]).lower()
     if judge_name not in ("rm", "reward", "pairrm"):
         raise ValueError(f"Unsupported judge '{judge_name}'. Use 'rm'.")
@@ -171,6 +200,14 @@ def main() -> None:
     debug_path = rollout_cfg.get("debug_log_path") or os.path.join(output_dir, "rollout_debug.jsonl")
     manifest_path = os.path.join(output_dir, "manifest.json")
 
+    responses_per_prompt = int(rollout_cfg["responses_per_prompt"])
+    gen_kwargs = { # Duplicate for manifest logging
+        "do_sample": True,
+        "temperature": float(rollout_cfg["temperature"]),
+        "top_p": float(rollout_cfg["top_p"]),
+        "max_new_tokens": int(rollout_cfg["max_new_tokens"]),
+    }
+    
     meta_base = {
         "source": "hh_rollout",
         "seed": int(rollout_cfg["seed"]),
@@ -187,13 +224,13 @@ def main() -> None:
         "responses_file": responses_path,
         "judged_file": judged_path,
         "debug_file": debug_path if (rollout_cfg["debug_log_all"] or rollout_cfg["debug_log_empty_only"]) else None,
+        "engine": rollout_cfg["engine"],
         **meta_base,
     }
 
     raw_ds = load_dataset(rollout_cfg["dataset_name"], split=rollout_cfg["subset"])
     limit = rollout_cfg["limit"]
-    batch_size = int(rollout_cfg["batch_size"])
-
+    
     processed = 0
     generated = 0
     debug_remaining = (
@@ -207,31 +244,52 @@ def main() -> None:
         nonlocal generated, debug_remaining
         start = time.perf_counter()
         prompt_texts = [b["prompt_text"] for b in batch]
-        if debug_enabled and rollout_cfg["log_throughput"]:
-            candidates, raw_candidates, token_counts = generator.generate_batch(
-                prompt_texts, return_raw=True, return_token_counts=True
-            )
-        elif debug_enabled:
-            candidates, raw_candidates = generator.generate_batch(
-                prompt_texts, return_raw=True
-            )
-            token_counts = None
-        elif rollout_cfg["log_throughput"]:
-            candidates, token_counts = generator.generate_batch(
-                prompt_texts, return_token_counts=True
+        
+        # Branch for generator type
+        if rollout_cfg["engine"] == "vllm":
+            # vLLM generator handles large batch internally, returns only groups
+            candidates = generator.generate_batch(
+                prompt_texts,
+                num_return_sequences=responses_per_prompt,
+                **gen_kwargs
             )
             raw_candidates = [None] * len(candidates)
+            token_counts = None
         else:
-            candidates = generator.generate_batch(prompt_texts)
-            raw_candidates = [None] * len(candidates)
-            token_counts = None
+            # Standard HF logic
+            if debug_enabled and rollout_cfg["log_throughput"]:
+                candidates, raw_candidates, token_counts = generator.generate_batch(
+                    prompt_texts, return_raw=True, return_token_counts=True
+                )
+            elif debug_enabled:
+                candidates, raw_candidates = generator.generate_batch(
+                    prompt_texts, return_raw=True
+                )
+                token_counts = None
+            elif rollout_cfg["log_throughput"]:
+                candidates, token_counts = generator.generate_batch(
+                    prompt_texts, return_token_counts=True
+                )
+                raw_candidates = [None] * len(candidates)
+            else:
+                candidates = generator.generate_batch(prompt_texts)
+                raw_candidates = [None] * len(candidates)
+                token_counts = None
+
         elapsed = time.perf_counter() - start
-        if rollout_cfg["log_throughput"] and token_counts is not None and elapsed > 0:
-            total_tokens = sum(sum(counts) for counts in token_counts)
+        if rollout_cfg["log_throughput"] and elapsed > 0:
+            count_str = ""
+            if token_counts is not None:
+                total_tokens = sum(sum(counts) for counts in token_counts)
+                count_str = f"| {total_tokens} tokens | {total_tokens / elapsed:.1f} tok/s"
+            elif rollout_cfg["engine"] == "vllm":
+                 # Estimate for vLLM since we don't count tokens explicitly to save time
+                 count_str = f"| {len(batch)*responses_per_prompt} sequences"
+
             print(
-                f"Batch {len(batch)} prompts | {total_tokens} tokens | "
-                f"{total_tokens / elapsed:.1f} tok/s"
+                f"Batch {len(batch)} prompts {count_str}"
             )
+
         for item, cand_list, raw_list in tqdm(
             list(zip(batch, candidates, raw_candidates)),
             desc="Saving responses",
@@ -285,7 +343,8 @@ def main() -> None:
             prompt_messages, reference_response = extract_prompt_and_reference(text)
             if not prompt_messages or messages_have_raw_role_tags(prompt_messages):
                 continue
-
+            
+            # Apply Template using the tokenizer (vLLM or HF both have it)
             buffer.append(
                 {
                     "prompt_messages": prompt_messages,
@@ -326,7 +385,15 @@ def main() -> None:
         if debug_f is not None:
             debug_f.flush()
 
-    if load_in_8bit:
+    # Teardown Generator if needed
+    if rollout_cfg["engine"] == "vllm":
+        # Cleanup vLLM to free VRAM for RM
+        import gc
+        del generator
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    elif load_in_8bit:
         # Release the generator to free VRAM before loading the RM.
         del model
         if torch.cuda.is_available():

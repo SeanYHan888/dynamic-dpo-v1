@@ -285,3 +285,95 @@ class RolloutGenerator:
         if return_token_counts:
             return grouped, count_grouped
         return grouped
+
+
+class VLLMRolloutGenerator:
+    """High-throughput generator using vLLM."""
+
+    def __init__(
+        self,
+        model_name: str,
+        seed: int,
+        device_map: str | None = None,
+        gpu_memory_utilization: float = 0.9,
+        **kwargs,
+    ):
+        try:
+            from vllm import LLM
+        except ImportError as exc:
+            raise ImportError(
+                "vLLM is not installed. Please install it with `pip install vllm` to use this generator."
+            ) from exc
+
+        self.llm = LLM(
+            model=model_name,
+            seed=seed,
+            trust_remote_code=True,
+            gpu_memory_utilization=gpu_memory_utilization,
+            # device_map is handled internally by vLLM (tensor_parallel_size, etc.)
+            # We assume single-node for now or standard vllm distributed setup.
+            **kwargs,
+        )
+        self.tokenizer = self.llm.get_tokenizer()
+        self.tokenizer.padding_side = "left"
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+    def generate_batch(
+        self,
+        prompt_texts: List[str],
+        **generation_kwargs,
+    ) -> List[List[str]]:
+        if not prompt_texts:
+            return []
+
+        from vllm import SamplingParams
+
+        # Map HF configs to vLLM SamplingParams
+        n = int(generation_kwargs.get("num_return_sequences", 1))
+        # vLLM expects float for temp/top_p, etc.
+        temperature = float(generation_kwargs.get("temperature", 1.0))
+        top_p = float(generation_kwargs.get("top_p", 1.0))
+        max_tokens = int(generation_kwargs.get("max_new_tokens", 512))
+        
+        # Stop tokens
+        stop_strings = generation_kwargs.get("stop_strings", DEFAULT_STOP_STRINGS)
+        stop_token_ids = generation_kwargs.get("eos_token_id", [])
+        if isinstance(stop_token_ids, int):
+            stop_token_ids = [stop_token_ids]
+        
+        # Add EOT if known
+        eot_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
+        if eot_id is not None and eot_id != self.tokenizer.unk_token_id:
+            if isinstance(stop_token_ids, list):
+                stop_token_ids.append(eot_id)
+
+        sampling_params = SamplingParams(
+            n=n,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            stop=list(stop_strings) if stop_strings else None,
+            stop_token_ids=list(set(stop_token_ids)) if stop_token_ids else None,
+        )
+
+        # Generate
+        # use_tqdm=False to keep logs clean or let caller handle progress
+        outputs = self.llm.generate(prompt_texts, sampling_params, use_tqdm=True)
+
+        # Unpack
+        # outputs is List[RequestOutput]
+        # output.outputs is List[CompletionOutput] (length n)
+        grouped_candidates = []
+        for request_output in outputs:
+            cands = [completion.text for completion in request_output.outputs]
+            grouped_candidates.append(cands)
+
+        # vLLM returns raw text usually. If we need token counts, we'd need to count them
+        # or check completion.token_ids.
+        # Original interface supported return_raw/return_token_counts.
+        # For minimal migration, we just return the text groups.
+        # If needed, we can implement return_token_counts by len(completion.token_ids).
+        
+        return grouped_candidates
+
