@@ -17,31 +17,6 @@ class BaseJudge:
         raise NotImplementedError
 
 
-class DummyJudge(BaseJudge):
-    """Simple judge for pipeline testing (length-based with seeded tie-breaks)."""
-
-    def __init__(self, seed: int = 42):
-        self._rng = random.Random(seed)
-
-    def rank(self, prompt: str, candidates: List[str]) -> Tuple[int, int]:
-        if not candidates:
-            raise ValueError("No candidates to rank.")
-        lengths = [len(c) for c in candidates]
-        max_len = max(lengths)
-        min_len = min(lengths)
-        if max_len == min_len:
-            # All candidates are the same length; pick two distinct indices.
-            if len(candidates) < 2:
-                raise ValueError("Need at least two candidates to rank.")
-            best_idx, worst_idx = self._rng.sample(range(len(candidates)), 2)
-            return best_idx, worst_idx
-        best_indices = [i for i, l in enumerate(lengths) if l == max_len]
-        worst_indices = [i for i, l in enumerate(lengths) if l == min_len]
-        best_idx = self._rng.choice(best_indices)
-        worst_idx = self._rng.choice(worst_indices)
-        return best_idx, worst_idx
-
-
 class RMJudge(BaseJudge):
     """Reward-model judge that ranks candidates by score."""
 

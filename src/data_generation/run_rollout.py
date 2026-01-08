@@ -10,7 +10,7 @@ import yaml
 from datasets import load_dataset
 
 from .hh_parser import extract_prompt_and_reference, messages_have_raw_role_tags
-from .rollout import DummyJudge, RMJudge, RolloutGenerator
+from .rollout import RMJudge, RolloutGenerator
 from .utils import load_model, load_tokenizer, seed_everything
 
 
@@ -117,18 +117,17 @@ def main() -> None:
         **gen_kwargs,
     )
     judge_name = str(rollout_cfg["judge"]).lower()
-    if judge_name in ("rm", "reward", "pairrm"):
-        judge = RMJudge(
-            model_name=rollout_cfg["reward_model"],
-            precision=rollout_cfg["reward_precision"] or config.get("precision"),
-            device_map=rollout_cfg["reward_device_map"],
-            load_in_8bit=bool(rollout_cfg["reward_load_in_8bit"]),
-            batch_size=int(rollout_cfg["reward_batch_size"]),
-            max_length=rollout_cfg["reward_max_length"],
-            seed=int(rollout_cfg["seed"]),
-        )
-    else:
-        judge = DummyJudge(seed=int(rollout_cfg["seed"]))
+    if judge_name not in ("rm", "reward", "pairrm"):
+        raise ValueError(f"Unsupported judge '{judge_name}'. Use 'rm'.")
+    judge = RMJudge(
+        model_name=rollout_cfg["reward_model"],
+        precision=rollout_cfg["reward_precision"] or config.get("precision"),
+        device_map=rollout_cfg["reward_device_map"],
+        load_in_8bit=bool(rollout_cfg["reward_load_in_8bit"]),
+        batch_size=int(rollout_cfg["reward_batch_size"]),
+        max_length=rollout_cfg["reward_max_length"],
+        seed=int(rollout_cfg["seed"]),
+    )
 
     output_dir = rollout_cfg["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
