@@ -4,7 +4,7 @@ import random
 from typing import Iterable, List, Tuple
 
 import torch
-from transformers import StoppingCriteria, StoppingCriteriaList
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
 
 
 DEFAULT_STOP_STRINGS = ("\n\nHuman:", "<|start_header_id|>")
@@ -37,6 +37,111 @@ class DummyJudge(BaseJudge):
             return best_idx, worst_idx
         best_indices = [i for i, l in enumerate(lengths) if l == max_len]
         worst_indices = [i for i, l in enumerate(lengths) if l == min_len]
+        best_idx = self._rng.choice(best_indices)
+        worst_idx = self._rng.choice(worst_indices)
+        return best_idx, worst_idx
+
+
+class RMJudge(BaseJudge):
+    """Reward-model judge that ranks candidates by score."""
+
+    def __init__(
+        self,
+        model_name: str,
+        *,
+        tokenizer_name: str | None = None,
+        precision: str | None = None,
+        device_map: str | None = None,
+        load_in_8bit: bool = False,
+        batch_size: int = 4,
+        seed: int = 42,
+        max_length: int | None = None,
+    ):
+        self._rng = random.Random(seed)
+        self.batch_size = int(batch_size)
+        self.max_length = max_length
+
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name or model_name, use_fast=True)
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        dtype = None
+        if precision and not load_in_8bit:
+            prec = precision.lower()
+            if prec == "fp16":
+                dtype = torch.float16
+            elif prec == "bf16":
+                dtype = torch.bfloat16
+
+        kwargs = {"trust_remote_code": True}
+        if dtype is not None:
+            kwargs["torch_dtype"] = dtype
+        if load_in_8bit:
+            kwargs["load_in_8bit"] = True
+            if device_map is None:
+                device_map = "auto"
+        if device_map is not None:
+            kwargs["device_map"] = device_map
+
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name, **kwargs)
+        self.model.eval()
+
+        if device_map is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.model.to(device)
+            self._device = device
+        else:
+            self._device = None
+
+    def _build_texts(self, prompt: str | List[dict], candidates: List[str]) -> List[str]:
+        texts: List[str] = []
+        if isinstance(prompt, list):
+            for cand in candidates:
+                messages = prompt + [{"role": "assistant", "content": cand}]
+                text = self.tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=False
+                )
+                texts.append(text)
+            return texts
+
+        suffix = self.tokenizer.eos_token or ""
+        for cand in candidates:
+            text = f"{prompt}{cand}"
+            if suffix and not text.endswith(suffix):
+                text = f"{text}{suffix}"
+            texts.append(text)
+        return texts
+
+    def _score_texts(self, texts: List[str]) -> List[float]:
+        scores: List[float] = []
+        for i in range(0, len(texts), self.batch_size):
+            batch = texts[i : i + self.batch_size]
+            inputs = self.tokenizer(
+                batch,
+                padding=True,
+                truncation=self.max_length is not None,
+                max_length=self.max_length,
+                return_tensors="pt",
+            )
+            if self._device is not None:
+                inputs = {k: v.to(self._device) for k, v in inputs.items()}
+
+            with torch.inference_mode():
+                outputs = self.model(**inputs)
+                logits = outputs.logits
+                batch_scores = logits.squeeze(-1).detach().float().cpu().tolist()
+                scores.extend(batch_scores)
+        return scores
+
+    def rank(self, prompt: str | List[dict], candidates: List[str]) -> Tuple[int, int]:
+        if not candidates:
+            raise ValueError("No candidates to rank.")
+        texts = self._build_texts(prompt, candidates)
+        scores = self._score_texts(texts)
+        max_score = max(scores)
+        min_score = min(scores)
+        best_indices = [i for i, s in enumerate(scores) if s == max_score]
+        worst_indices = [i for i, s in enumerate(scores) if s == min_score]
         best_idx = self._rng.choice(best_indices)
         worst_idx = self._rng.choice(worst_indices)
         return best_idx, worst_idx

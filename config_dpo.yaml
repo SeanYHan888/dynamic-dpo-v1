@@ -59,12 +59,20 @@ margin_log:
   dpo_log_dir: logs/dpo_margins
 
 rollout:
+  model_name: W-61/hh-llama32-1b-sft-100-train
   output_dir: rollout_output
-  batch_size: 4
-  k: 8
+  batch_size: 5
+  responses_per_prompt: 5
   temperature: 0.7
   top_p: 0.9
   max_new_tokens: 512
   min_new_tokens: 10
   limit: null
   device_map: null
+  judge: rm
+  reward_model: RLHFlow/ArmoRM-Llama3-8B-v0.1
+  reward_batch_size: 5
+  reward_precision: null
+  reward_device_map: null
+  reward_max_length: null
+  reward_load_in_8bit: true
