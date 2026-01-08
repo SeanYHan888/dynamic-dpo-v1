@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 import torch
 import yaml
 from datasets import load_dataset
+from tqdm import tqdm
 
 from .hh_parser import extract_prompt_and_reference, messages_have_raw_role_tags
 from .rollout import RMJudge, RolloutGenerator
@@ -138,7 +139,8 @@ def main() -> None:
 
     output_dir = rollout_cfg["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "rollout_dataset.jsonl")
+    responses_path = os.path.join(output_dir, "rollout_responses.jsonl")
+    judged_path = os.path.join(output_dir, "rollout_judged.jsonl")
     manifest_path = os.path.join(output_dir, "manifest.json")
 
     meta_base = {
@@ -155,6 +157,8 @@ def main() -> None:
         "dataset_name": rollout_cfg["dataset_name"],
         "subset": rollout_cfg["subset"],
         "generation_kwargs": gen_kwargs,
+        "responses_file": responses_path,
+        "judged_file": judged_path,
         **meta_base,
     }
 
@@ -163,30 +167,55 @@ def main() -> None:
     batch_size = int(rollout_cfg["batch_size"])
 
     processed = 0
+    generated = 0
     buffer: List[dict] = []
 
-    def flush(batch: List[dict], out_f) -> bool:
-        nonlocal processed
+    def flush(batch: List[dict], responses_f, judged_f) -> bool:
+        nonlocal processed, generated
         candidates = generator.generate_batch([b["prompt_text"] for b in batch])
-        for item, cand_list in zip(batch, candidates):
-            cleaned = [c for c in cand_list if c.strip()]
-            if len(cleaned) < 2:
+        for item, cand_list in tqdm(
+            list(zip(batch, candidates)),
+            desc="RM judging",
+            leave=False,
+        ):
+            responses = [c.strip() for c in cand_list]
+            responses_f.write(
+                json.dumps(
+                    {
+                        "prompt_messages": item["prompt_messages"],
+                        "responses": responses,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+            responses_f.flush()
+            generated += 1
+
+            nonempty = [(idx, resp) for idx, resp in enumerate(responses) if resp]
+            if len(nonempty) < 2:
                 continue
-            best_idx, worst_idx = judge.rank(item["prompt_messages"], cleaned)
+            idx_map, cleaned = zip(*nonempty)
+            best_local, worst_local = judge.rank(item["prompt_messages"], list(cleaned))
+            best_idx = idx_map[best_local]
+            worst_idx = idx_map[worst_local]
             record = {
                 "prompt_messages": item["prompt_messages"],
-                "chosen": [{"role": "assistant", "content": cleaned[best_idx]}],
-                "rejected": [{"role": "assistant", "content": cleaned[worst_idx]}],
+                "chosen": [{"role": "assistant", "content": responses[best_idx]}],
+                "rejected": [{"role": "assistant", "content": responses[worst_idx]}],
                 "metadata": {**meta_base, "reference_response": item["reference_response"]},
             }
-            out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            judged_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            judged_f.flush()
             processed += 1
             if limit is not None and processed >= int(limit):
                 return True
         return False
 
-    with open(output_path, "w", encoding="utf-8") as out_f:
-        for row in raw_ds:
+    with open(responses_path, "w", encoding="utf-8") as responses_f, open(
+        judged_path, "w", encoding="utf-8"
+    ) as judged_f:
+        for row in tqdm(raw_ds, desc="Rollout prompts"):
             text = row.get("chosen") if isinstance(row, dict) else None
             if not text:
                 continue
@@ -206,18 +235,19 @@ def main() -> None:
 
             if len(buffer) < batch_size:
                 continue
-            if flush(buffer, out_f):
+            if flush(buffer, responses_f, judged_f):
                 buffer = []
                 break
             buffer = []
 
         if buffer and (limit is None or processed < int(limit)):
-            flush(buffer, out_f)
+            flush(buffer, responses_f, judged_f)
 
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
-    print(f"Wrote {processed} rows to {output_path}")
+    print(f"Wrote {generated} rows to {responses_path}")
+    print(f"Wrote {processed} rows to {judged_path}")
     print(f"Manifest saved to {manifest_path}")
 
 
