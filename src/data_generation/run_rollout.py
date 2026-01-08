@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
         ("reward_quantization", str),
         ("debug_log_path", str),
         ("debug_log_max", int),
+        ("flush_every_batches", int),
     ):
         parser.add_argument(f"--{name}", type=arg_type, default=None)
     parser.add_argument("--reward_load_in_8bit", action="store_true", default=None)
@@ -98,6 +99,7 @@ def resolve_rollout_cfg(config: Dict, args: argparse.Namespace) -> Dict:
             else args.debug_log_empty_only
         ),
         "debug_log_max": pick("debug_log_max", None),
+        "flush_every_batches": pick("flush_every_batches", 1),
     }
 
 
@@ -120,17 +122,14 @@ def main() -> None:
 
     seed_everything(int(rollout_cfg["seed"]))
     tokenizer = load_tokenizer(model_name, padding_side="left")
+    device_map = rollout_cfg["device_map"] or "auto"
     model = load_model(
         model_name,
         precision=config.get("precision"),
-        device_map=rollout_cfg["device_map"],
+        device_map=device_map,
     )
     model.eval()
-    if rollout_cfg["device_map"] is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model.to(device)
-    else:
-        device = next(model.parameters()).device
+    device = next(model.parameters()).device
 
     print(f"Generator device: {device}")
 
@@ -191,6 +190,8 @@ def main() -> None:
     debug_remaining = (
         int(rollout_cfg["debug_log_max"]) if rollout_cfg["debug_log_max"] is not None else None
     )
+    flush_every_batches = max(1, int(rollout_cfg["flush_every_batches"]))
+    batch_counter = 0
     buffer: List[dict] = []
 
     def flush(batch: List[dict], responses_f, debug_f, debug_enabled: bool) -> bool:
@@ -228,7 +229,6 @@ def main() -> None:
                 )
                 + "\n"
             )
-            responses_f.flush()
             generated += 1
             if debug_f is not None and raw_list is not None:
                 empty_indices = [i for i, resp in enumerate(responses) if not resp]
@@ -249,7 +249,6 @@ def main() -> None:
                         )
                         + "\n"
                     )
-                    debug_f.flush()
                     if debug_remaining is not None:
                         debug_remaining -= 1
             if limit is not None and generated >= int(limit):
@@ -284,11 +283,29 @@ def main() -> None:
                 continue
             if flush(buffer, responses_f, debug_f if debug_enabled else None, debug_enabled):
                 buffer = []
+                batch_counter += 1
+                if batch_counter % flush_every_batches == 0:
+                    responses_f.flush()
+                    if debug_f is not None:
+                        debug_f.flush()
                 break
             buffer = []
+            batch_counter += 1
+            if batch_counter % flush_every_batches == 0:
+                responses_f.flush()
+                if debug_f is not None:
+                    debug_f.flush()
 
         if buffer and (limit is None or generated < int(limit)):
             flush(buffer, responses_f, debug_f if debug_enabled else None, debug_enabled)
+            batch_counter += 1
+            if batch_counter % flush_every_batches == 0:
+                responses_f.flush()
+                if debug_f is not None:
+                    debug_f.flush()
+        responses_f.flush()
+        if debug_f is not None:
+            debug_f.flush()
 
     if load_in_8bit:
         # Release the generator to free VRAM before loading the RM.
