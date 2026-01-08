@@ -85,6 +85,12 @@ class RMJudge(BaseJudge):
         else:
             self._device = None
 
+        if self._device is None:
+            try:
+                self._device = next(self.model.parameters()).device
+            except StopIteration:
+                self._device = None
+
     def _build_texts(self, prompt: str | List[dict], candidates: List[str]) -> List[str]:
         texts: List[str] = []
         if isinstance(prompt, list):
