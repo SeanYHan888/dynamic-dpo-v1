@@ -4,11 +4,11 @@ import random
 from typing import Iterable, List, Tuple
 
 import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, StoppingCriteria
 
 
-DEFAULT_STOP_STRINGS = ("\n\nHuman:", "<|start_header_id|>")
-DEFAULT_STOP_TOKENS = ("<|eot_id|>", "<|start_header_id|>")
+DEFAULT_STOP_STRINGS = ("\n\nHuman:",)
+DEFAULT_STOP_TOKENS = ("<|eot_id|>",)
 
 
 class BaseJudge:
@@ -252,19 +252,21 @@ class RolloutGenerator:
         input_ids = encoded["input_ids"].to(device)
         attention_mask = encoded["attention_mask"].to(device)
 
-        stop_criteria = StopOnTokenSequences(
-            stop_sequences=self.stop_token_sequences,
-            start_index=input_len,
-        )
+        eos_ids = [self.tokenizer.eos_token_id]
+        eot_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
+        if eot_id is not None and eot_id != self.tokenizer.unk_token_id:
+            eos_ids.append(eot_id)
+        eos_ids = [eid for eid in eos_ids if eid is not None]
+        if len(eos_ids) == 1:
+            eos_ids = eos_ids[0]
 
         with torch.no_grad():
             outputs = self.model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 num_return_sequences=self.num_return_sequences,
-                stopping_criteria=StoppingCriteriaList([stop_criteria]),
                 pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=eos_ids,
                 **self.generation_kwargs,
             )
 

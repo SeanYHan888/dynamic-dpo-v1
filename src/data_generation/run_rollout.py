@@ -14,6 +14,7 @@ from .hh_parser import extract_prompt_and_reference, messages_have_raw_role_tags
 from .rollout import RMJudge, RolloutGenerator
 from .utils import load_model, load_tokenizer, seed_everything
 
+ASSISTANT_HEADER = "<|start_header_id|>assistant<|end_header_id|>\\n\\n"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -97,6 +98,13 @@ def resolve_rollout_cfg(config: Dict, args: argparse.Namespace) -> Dict:
         ),
         "debug_log_max": pick("debug_log_max", None),
     }
+
+
+def _ensure_generation_prompt(prompt_text: str) -> str:
+    trimmed = prompt_text.rstrip()
+    if trimmed.endswith(ASSISTANT_HEADER.rstrip()):
+        return prompt_text
+    return f"{prompt_text}{ASSISTANT_HEADER}"
 
 
 def main() -> None:
@@ -244,8 +252,10 @@ def main() -> None:
             buffer.append(
                 {
                     "prompt_messages": prompt_messages,
-                    "prompt_text": tokenizer.apply_chat_template(
+                    "prompt_text": _ensure_generation_prompt(
+                        tokenizer.apply_chat_template(
                         prompt_messages, tokenize=False, add_generation_prompt=True
+                    )
                     ),
                     "reference_response": reference_response,
                 }
