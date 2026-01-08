@@ -17,6 +17,9 @@ LLAMA3_CHAT_TEMPLATE = (
     "{% endif %}"
     "{{ '<|start_header_id|>' + message['role'] + '<|end_header_id|>\\n\\n' + content | trim + '<|eot_id|>' }}"
     "{% endfor %}"
+    "{% if add_generation_prompt %}"
+    "{{ '<|start_header_id|>assistant<|end_header_id|>\\n\\n' }}"
+    "{% endif %}"
 )
 
 

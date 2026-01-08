@@ -77,3 +77,7 @@ rollout:
   reward_max_length: null
   reward_quantization: 8bit
   reward_load_in_8bit: false
+  debug_log_path: null
+  debug_log_all: true
+  debug_log_empty_only: true
+  debug_log_max: null

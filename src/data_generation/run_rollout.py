@@ -37,9 +37,13 @@ def parse_args() -> argparse.Namespace:
         ("reward_device_map", str),
         ("reward_max_length", int),
         ("reward_quantization", str),
+        ("debug_log_path", str),
+        ("debug_log_max", int),
     ):
         parser.add_argument(f"--{name}", type=arg_type, default=None)
     parser.add_argument("--reward_load_in_8bit", action="store_true", default=None)
+    parser.add_argument("--debug_log_all", action="store_true", default=None)
+    parser.add_argument("--debug_log_empty_only", action="store_true", default=None)
     return parser.parse_args()
 
 
@@ -68,7 +72,7 @@ def resolve_rollout_cfg(config: Dict, args: argparse.Namespace) -> Dict:
         "max_new_tokens": pick("max_new_tokens", 512),
         "min_new_tokens": pick("min_new_tokens", 10),
         "device_map": args.device_map if args.device_map is not None else rollout_cfg.get("device_map"),
-        "judge": pick("judge", "dummy"),
+        "judge": pick("judge", "rm"),
         "reward_model": pick("reward_model", "RLHFlow/ArmoRM-Llama3-8B-v0.1"),
         "reward_batch_size": pick("reward_batch_size", 4),
         "reward_precision": pick("reward_precision", None),
@@ -80,6 +84,18 @@ def resolve_rollout_cfg(config: Dict, args: argparse.Namespace) -> Dict:
             if args.reward_load_in_8bit is None
             else args.reward_load_in_8bit
         ),
+        "debug_log_path": pick("debug_log_path", None),
+        "debug_log_all": (
+            rollout_cfg.get("debug_log_all", False)
+            if args.debug_log_all is None
+            else args.debug_log_all
+        ),
+        "debug_log_empty_only": (
+            rollout_cfg.get("debug_log_empty_only", True)
+            if args.debug_log_empty_only is None
+            else args.debug_log_empty_only
+        ),
+        "debug_log_max": pick("debug_log_max", None),
     }
 
 
@@ -131,6 +147,7 @@ def main() -> None:
     os.makedirs(output_dir, exist_ok=True)
     responses_path = os.path.join(output_dir, "rollout_responses.jsonl")
     judged_path = os.path.join(output_dir, "rollout_judged.jsonl")
+    debug_path = rollout_cfg.get("debug_log_path") or os.path.join(output_dir, "rollout_debug.jsonl")
     manifest_path = os.path.join(output_dir, "manifest.json")
 
     meta_base = {
@@ -148,6 +165,7 @@ def main() -> None:
         "generation_kwargs": gen_kwargs,
         "responses_file": responses_path,
         "judged_file": judged_path,
+        "debug_file": debug_path if (rollout_cfg["debug_log_all"] or rollout_cfg["debug_log_empty_only"]) else None,
         **meta_base,
     }
 
@@ -157,13 +175,18 @@ def main() -> None:
 
     processed = 0
     generated = 0
+    debug_remaining = (
+        int(rollout_cfg["debug_log_max"]) if rollout_cfg["debug_log_max"] is not None else None
+    )
     buffer: List[dict] = []
 
-    def flush(batch: List[dict], responses_f) -> bool:
-        nonlocal generated
-        candidates = generator.generate_batch([b["prompt_text"] for b in batch])
-        for item, cand_list in tqdm(
-            list(zip(batch, candidates)),
+    def flush(batch: List[dict], responses_f, debug_f) -> bool:
+        nonlocal generated, debug_remaining
+        candidates, raw_candidates = generator.generate_batch(
+            [b["prompt_text"] for b in batch], return_raw=True
+        )
+        for item, cand_list, raw_list in tqdm(
+            list(zip(batch, candidates, raw_candidates)),
             desc="Saving responses",
             leave=False,
         ):
@@ -180,11 +203,36 @@ def main() -> None:
             )
             responses_f.flush()
             generated += 1
+            if debug_f is not None:
+                empty_indices = [i for i, resp in enumerate(responses) if not resp]
+                should_log = rollout_cfg["debug_log_all"] or (
+                    rollout_cfg["debug_log_empty_only"] and empty_indices
+                )
+                if should_log and (debug_remaining is None or debug_remaining > 0):
+                    debug_f.write(
+                        json.dumps(
+                            {
+                                "prompt_messages": item["prompt_messages"],
+                                "prompt_text": item["prompt_text"],
+                                "raw_responses": raw_list,
+                                "cleaned_responses": responses,
+                                "empty_indices": empty_indices,
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
+                    debug_f.flush()
+                    if debug_remaining is not None:
+                        debug_remaining -= 1
             if limit is not None and generated >= int(limit):
                 return True
         return False
 
-    with open(responses_path, "w", encoding="utf-8") as responses_f:
+    debug_enabled = rollout_cfg["debug_log_all"] or rollout_cfg["debug_log_empty_only"]
+    with open(responses_path, "w", encoding="utf-8") as responses_f, (
+        open(debug_path, "w", encoding="utf-8") if debug_enabled else open(os.devnull, "w")
+    ) as debug_f:
         for row in tqdm(raw_ds, desc="Rollout prompts"):
             text = row.get("chosen") if isinstance(row, dict) else None
             if not text:
@@ -205,13 +253,13 @@ def main() -> None:
 
             if len(buffer) < batch_size:
                 continue
-            if flush(buffer, responses_f):
+            if flush(buffer, responses_f, debug_f if debug_enabled else None):
                 buffer = []
                 break
             buffer = []
 
         if buffer and (limit is None or generated < int(limit)):
-            flush(buffer, responses_f)
+            flush(buffer, responses_f, debug_f if debug_enabled else None)
 
     if load_in_8bit:
         # Release the generator to free VRAM before loading the RM.

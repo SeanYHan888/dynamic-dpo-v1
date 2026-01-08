@@ -242,9 +242,9 @@ class RolloutGenerator:
             unique.append(seq)
         return unique
 
-    def generate_batch(self, prompt_texts: List[str]) -> List[List[str]]:
+    def generate_batch(self, prompt_texts: List[str], *, return_raw: bool = False):
         if not prompt_texts:
-            return []
+            return [] if not return_raw else ([], [])
 
         encoded = self.tokenizer(prompt_texts, padding=True, return_tensors="pt")
         input_len = encoded["input_ids"].shape[1]
@@ -270,10 +270,13 @@ class RolloutGenerator:
 
         # Strip the padded prompt portion; generated tokens start after input_len.
         generated_ids = outputs[:, input_len:]
+        raw_decoded = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=False)
         decoded = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
         decoded = [self._truncate_at_stop_strings(text) for text in decoded]
 
         grouped: List[List[str]] = []
+        raw_grouped: List[List[str]] = []
         for i in range(0, len(decoded), self.num_return_sequences):
             grouped.append(decoded[i : i + self.num_return_sequences])
-        return grouped
+            raw_grouped.append(raw_decoded[i : i + self.num_return_sequences])
+        return (grouped, raw_grouped) if return_raw else grouped
