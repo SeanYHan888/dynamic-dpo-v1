@@ -36,6 +36,9 @@ class RMJudge(BaseJudge):
         self.batch_size = int(batch_size)
         self.max_length = max_length
 
+        # ArmoRM custom modeling expects this symbol; newer transformers dropped it.
+        self._ensure_llama_docstring()
+
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name or model_name, use_fast=True)
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -86,6 +89,17 @@ class RMJudge(BaseJudge):
                 text = f"{text}{suffix}"
             texts.append(text)
         return texts
+
+    @staticmethod
+    def _ensure_llama_docstring() -> None:
+        try:
+            from transformers.models.llama import modeling_llama
+
+            if not hasattr(modeling_llama, "LLAMA_INPUTS_DOCSTRING"):
+                modeling_llama.LLAMA_INPUTS_DOCSTRING = ""
+        except Exception:
+            # If llama module moves again, we fall back to letting HF raise.
+            pass
 
     def _score_texts(self, texts: List[str]) -> List[float]:
         scores: List[float] = []
