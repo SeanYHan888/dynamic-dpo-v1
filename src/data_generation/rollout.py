@@ -242,9 +242,21 @@ class RolloutGenerator:
             unique.append(seq)
         return unique
 
-    def generate_batch(self, prompt_texts: List[str], *, return_raw: bool = False):
+    def generate_batch(
+        self,
+        prompt_texts: List[str],
+        *,
+        return_raw: bool = False,
+        return_token_counts: bool = False,
+    ):
         if not prompt_texts:
-            return [] if not return_raw else ([], [])
+            if return_raw and return_token_counts:
+                return [], [], []
+            if return_raw:
+                return [], []
+            if return_token_counts:
+                return [], []
+            return []
 
         encoded = self.tokenizer(prompt_texts, padding=True, return_tensors="pt")
         input_len = encoded["input_ids"].shape[1]
@@ -272,13 +284,33 @@ class RolloutGenerator:
 
         # Strip the padded prompt portion; generated tokens start after input_len.
         generated_ids = outputs[:, input_len:]
-        raw_decoded = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=False)
+        token_counts = None
+        if return_token_counts:
+            pad_id = self.tokenizer.pad_token_id
+            if pad_id is None:
+                token_counts = [len(seq) for seq in generated_ids]
+            else:
+                token_counts = (generated_ids != pad_id).sum(dim=1).tolist()
+        raw_decoded = None
+        if return_raw:
+            raw_decoded = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=False)
         decoded = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
         decoded = [self._truncate_at_stop_strings(text) for text in decoded]
 
         grouped: List[List[str]] = []
         raw_grouped: List[List[str]] = []
+        count_grouped: List[List[int]] = []
         for i in range(0, len(decoded), self.num_return_sequences):
             grouped.append(decoded[i : i + self.num_return_sequences])
-            raw_grouped.append(raw_decoded[i : i + self.num_return_sequences])
-        return (grouped, raw_grouped) if return_raw else grouped
+            if raw_decoded is not None:
+                raw_grouped.append(raw_decoded[i : i + self.num_return_sequences])
+            if token_counts is not None:
+                count_grouped.append(token_counts[i : i + self.num_return_sequences])
+
+        if return_raw and return_token_counts:
+            return grouped, raw_grouped, count_grouped
+        if return_raw:
+            return grouped, raw_grouped
+        if return_token_counts:
+            return grouped, count_grouped
+        return grouped

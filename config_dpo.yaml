@@ -82,3 +82,4 @@ rollout:
   debug_log_empty_only: false
   debug_log_max: null
   flush_every_batches: 10
+  log_throughput: true

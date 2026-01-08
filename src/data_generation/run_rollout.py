@@ -47,6 +47,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward_load_in_8bit", action="store_true", default=None)
     parser.add_argument("--debug_log_all", action="store_true", default=None)
     parser.add_argument("--debug_log_empty_only", action="store_true", default=None)
+    parser.add_argument("--log_throughput", action="store_true", default=None)
+    parser.add_argument("--no_log_throughput", action="store_true", default=None)
     return parser.parse_args()
 
 
@@ -100,6 +102,7 @@ def resolve_rollout_cfg(config: Dict, args: argparse.Namespace) -> Dict:
         ),
         "debug_log_max": pick("debug_log_max", None),
         "flush_every_batches": pick("flush_every_batches", 1),
+        "log_throughput": rollout_cfg.get("log_throughput", True),
     }
 
 
@@ -115,6 +118,10 @@ def main() -> None:
     with open(args.config, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     rollout_cfg = resolve_rollout_cfg(config, args)
+    if args.log_throughput:
+        rollout_cfg["log_throughput"] = True
+    if args.no_log_throughput:
+        rollout_cfg["log_throughput"] = False
 
     model_name = rollout_cfg.get("model_name") or config.get("policy_name") or config.get("model_name")
     if not model_name:
@@ -132,6 +139,8 @@ def main() -> None:
     device = next(model.parameters()).device
 
     print(f"Generator device: {device}")
+    if getattr(model, "hf_device_map", None):
+        print(f"Generator hf_device_map: {model.hf_device_map}")
 
     responses_per_prompt = int(rollout_cfg["responses_per_prompt"])
     gen_kwargs = {
@@ -197,18 +206,28 @@ def main() -> None:
     def flush(batch: List[dict], responses_f, debug_f, debug_enabled: bool) -> bool:
         nonlocal generated, debug_remaining
         start = time.perf_counter()
-        if debug_enabled:
-            candidates, raw_candidates = generator.generate_batch(
-                [b["prompt_text"] for b in batch], return_raw=True
+        prompt_texts = [b["prompt_text"] for b in batch]
+        if debug_enabled and rollout_cfg["log_throughput"]:
+            candidates, raw_candidates, token_counts = generator.generate_batch(
+                prompt_texts, return_raw=True, return_token_counts=True
             )
-        else:
-            candidates = generator.generate_batch([b["prompt_text"] for b in batch])
+        elif debug_enabled:
+            candidates, raw_candidates = generator.generate_batch(
+                prompt_texts, return_raw=True
+            )
+            token_counts = None
+        elif rollout_cfg["log_throughput"]:
+            candidates, token_counts = generator.generate_batch(
+                prompt_texts, return_token_counts=True
+            )
             raw_candidates = [None] * len(candidates)
+        else:
+            candidates = generator.generate_batch(prompt_texts)
+            raw_candidates = [None] * len(candidates)
+            token_counts = None
         elapsed = time.perf_counter() - start
-        total_tokens = 0
-        for cand_list in candidates:
-            total_tokens += sum(len(tokenizer.encode(c)) for c in cand_list)
-        if elapsed > 0:
+        if rollout_cfg["log_throughput"] and token_counts is not None and elapsed > 0:
+            total_tokens = sum(sum(counts) for counts in token_counts)
             print(
                 f"Batch {len(batch)} prompts | {total_tokens} tokens | "
                 f"{total_tokens / elapsed:.1f} tok/s"
