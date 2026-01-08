@@ -4,7 +4,7 @@ import random
 from typing import Iterable, List, Tuple
 
 import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, StoppingCriteria
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
 DEFAULT_STOP_STRINGS = ("\n\nHuman:",)
@@ -156,35 +156,6 @@ class RMJudge(BaseJudge):
         best_idx = self._rng.choice(best_indices)
         worst_idx = self._rng.choice(worst_indices)
         return best_idx, worst_idx
-
-
-class StopOnTokenSequences(StoppingCriteria):
-    """Stop generation once any stop token sequence appears in the new tokens."""
-
-    def __init__(self, stop_sequences: Iterable[List[int]], start_index: int):
-        self._stop_sequences = [list(seq) for seq in stop_sequences if seq]
-        self._start_index = int(start_index)
-        self._triggered: List[bool] | None = None
-
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-        batch = input_ids.shape[0]
-        if self._triggered is None or len(self._triggered) != batch:
-            self._triggered = [False] * batch
-
-        for i in range(batch):
-            if self._triggered[i]:
-                continue
-            generated_len = input_ids.shape[1] - self._start_index
-            if generated_len <= 0:
-                continue
-            for seq in self._stop_sequences:
-                if generated_len < len(seq):
-                    continue
-                if input_ids[i, -len(seq) :].tolist() == seq:
-                    self._triggered[i] = True
-                    break
-
-        return all(self._triggered)
 
 
 class RolloutGenerator:

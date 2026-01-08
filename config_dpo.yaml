@@ -63,7 +63,7 @@ rollout:
   output_dir: rollout_output
   batch_size: 5
   responses_per_prompt: 5
-  temperature: 0.7
+  temperature: 0.8
   top_p: 0.9
   max_new_tokens: 512
   min_new_tokens: 10
