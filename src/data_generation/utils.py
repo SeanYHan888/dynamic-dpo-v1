@@ -67,7 +67,7 @@ def load_model(
     dtype = _resolve_precision(precision)
     kwargs = {}
     if dtype is not None:
-        kwargs["torch_dtype"] = dtype
+        kwargs["dtype"] = dtype
     if device_map is not None:
         kwargs["device_map"] = device_map
     return AutoModelForCausalLM.from_pretrained(model_name, **kwargs)

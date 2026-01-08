@@ -53,9 +53,15 @@ class RMJudge(BaseJudge):
 
         kwargs = {"trust_remote_code": True}
         if dtype is not None:
-            kwargs["torch_dtype"] = dtype
+            kwargs["dtype"] = dtype
         if load_in_8bit:
-            kwargs["load_in_8bit"] = True
+            try:
+                from transformers import BitsAndBytesConfig
+            except ImportError as exc:
+                raise ImportError(
+                    "bitsandbytes quantization requested but BitsAndBytesConfig is unavailable."
+                ) from exc
+            kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
             if device_map is None:
                 device_map = "auto"
         if device_map is not None:

@@ -75,4 +75,5 @@ rollout:
   reward_precision: null
   reward_device_map: null
   reward_max_length: null
-  reward_load_in_8bit: true
+  reward_quantization: 8bit
+  reward_load_in_8bit: false

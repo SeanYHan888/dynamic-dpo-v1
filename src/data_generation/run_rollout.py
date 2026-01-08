@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
         ("reward_precision", str),
         ("reward_device_map", str),
         ("reward_max_length", int),
+        ("reward_quantization", str),
     ):
         parser.add_argument(f"--{name}", type=arg_type, default=None)
     parser.add_argument("--reward_load_in_8bit", action="store_true", default=None)
@@ -72,6 +73,7 @@ def resolve_rollout_cfg(config: Dict, args: argparse.Namespace) -> Dict:
         "reward_precision": pick("reward_precision", None),
         "reward_device_map": pick("reward_device_map", None),
         "reward_max_length": pick("reward_max_length", None),
+        "reward_quantization": pick("reward_quantization", rollout_cfg.get("reward_quantization", "8bit")),
         "reward_load_in_8bit": (
             rollout_cfg.get("reward_load_in_8bit", False)
             if args.reward_load_in_8bit is None
@@ -119,11 +121,16 @@ def main() -> None:
     judge_name = str(rollout_cfg["judge"]).lower()
     if judge_name not in ("rm", "reward", "pairrm"):
         raise ValueError(f"Unsupported judge '{judge_name}'. Use 'rm'.")
+    quantization = str(rollout_cfg["reward_quantization"]).lower()
+    load_in_8bit = quantization in ("8bit", "int8", "bnb8")
+    if rollout_cfg["reward_load_in_8bit"]:
+        load_in_8bit = True
+
     judge = RMJudge(
         model_name=rollout_cfg["reward_model"],
         precision=rollout_cfg["reward_precision"] or config.get("precision"),
         device_map=rollout_cfg["reward_device_map"],
-        load_in_8bit=bool(rollout_cfg["reward_load_in_8bit"]),
+        load_in_8bit=load_in_8bit,
         batch_size=int(rollout_cfg["reward_batch_size"]),
         max_length=rollout_cfg["reward_max_length"],
         seed=int(rollout_cfg["seed"]),
@@ -143,7 +150,7 @@ def main() -> None:
     meta_base["judge"] = "rm" if judge_name in ("rm", "reward", "pairrm") else judge_name
     if judge_name in ("rm", "reward", "pairrm"):
         meta_base["reward_model"] = rollout_cfg["reward_model"]
-        meta_base["reward_load_in_8bit"] = bool(rollout_cfg["reward_load_in_8bit"])
+        meta_base["reward_quantization"] = "8bit" if load_in_8bit else "none"
     manifest = {
         "dataset_name": rollout_cfg["dataset_name"],
         "subset": rollout_cfg["subset"],
