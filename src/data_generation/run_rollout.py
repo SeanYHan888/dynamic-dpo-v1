@@ -120,14 +120,6 @@ def _ensure_generation_prompt(prompt_text: str) -> str:
 
 
 def main() -> None:
-    import multiprocessing
-    # Fix for vLLM: "Cannot re-initialize CUDA in forked subprocess"
-    # We must use 'spawn' if CUDA is initialized before forking (which seed_everything does)
-    try:
-        multiprocessing.set_start_method("spawn", force=True)
-    except RuntimeError:
-        pass
-
     args = parse_args()
     with open(args.config, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
@@ -141,10 +133,15 @@ def main() -> None:
     if not model_name:
         raise ValueError("Missing policy_name in config or --model_name override.")
 
-    seed_everything(int(rollout_cfg["seed"]))
-    
     # Setup Generator
     if rollout_cfg["engine"] == "vllm":
+        # vLLM manages its own tokenizer/model loading and seeding
+        # We explicitly seed random/numpy here but avoid touching torch.cuda to prevent fork errors
+        import random
+        import numpy as np
+        random.seed(int(rollout_cfg["seed"]))
+        np.random.seed(int(rollout_cfg["seed"]))
+        
         from .rollout import VLLMRolloutGenerator
         
         # vLLM manages its own tokenizer/model loading
@@ -168,6 +165,7 @@ def main() -> None:
         model = None # No HF model object
     else:
         # Standard HF path
+        seed_everything(int(rollout_cfg["seed"]))
         tokenizer = load_tokenizer(model_name, padding_side="left")
         device_map = rollout_cfg["device_map"] or "auto"
         model = load_model(
@@ -410,6 +408,9 @@ def main() -> None:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
+    # Re-seed exactly before Reward Model to ensure deterministic judging
+    # This is safe here because vLLM subprocesses are done/detached or we are single-process.
+    seed_everything(int(rollout_cfg["seed"]))
     judge = RMJudge(
         model_name=rollout_cfg["reward_model"],
         precision=rollout_cfg["reward_precision"] or config.get("precision"),
