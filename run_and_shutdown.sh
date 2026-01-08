@@ -1,31 +1,71 @@
 #!/bin/bash
 
 # run_and_shutdown.sh
-# Script to run SFT training and automatically shut down the RunPod instance.
+# Script to run a job and automatically shut down the RunPod instance.
 
-echo "Starting SFT training..."
+MODE="${1:-rollout}"
+CONFIG_PATH="${2:-config_dpo.yaml}"
+NO_AUTO_SHUT="${3:-}"
 
-# Run the training script.
-# Note: The training script has an interactive prompt at the end for pushing to Hub.
-# If running unattented, we pipe 'yes' to auto-confirm if you WANT to push.
-# If you do NOT want to push, remove 'yes |' and configure push_to_hub: False in config.
-# Assuming user wants to run this unattended and likely wants to push if configured.
-
-# Check if push_to_hub is enabled in config to decide if we need 'yes'
-# Ideally, we just run it. If prompt appears and no input, it hangs.
-# So we use 'yes' to be safe for unattended run.
-yes | python train_sft.py --config config_dpo.yaml
-
-TRAIN_EXIT_CODE=$?
-
-if [ $TRAIN_EXIT_CODE -eq 0 ]; then
-    echo "Training completed successfully."
+if [ "$MODE" = "rollout" ]; then
+    echo "Starting rollout data generation..."
+    uv run python -m src.data_generation.run_rollout --config "$CONFIG_PATH"
+    JOB_EXIT_CODE=$?
+elif [ "$MODE" = "sft" ]; then
+    echo "Starting SFT training..."
+    # Note: The training script has an interactive prompt at the end for pushing to Hub.
+    # If running unattented, we pipe 'yes' to auto-confirm if you WANT to push.
+    # If you do NOT want to push, remove 'yes |' and configure push_to_hub: False in config.
+    # Assuming user wants to run this unattended and likely wants to push if configured.
+    yes | uv run python train_sft.py --config "$CONFIG_PATH"
+    JOB_EXIT_CODE=$?
 else
-    echo "Training failed with exit code $TRAIN_EXIT_CODE."
+    echo "Unknown mode: $MODE (use 'rollout' or 'sft')"
+    exit 1
+fi
+
+if [ $JOB_EXIT_CODE -eq 0 ]; then
+    echo "Job completed successfully."
+
+    if [ "$MODE" = "rollout" ]; then
+        OUTPUT_DIR=$(python - "$CONFIG_PATH" <<'PY'
+import sys
+try:
+    import yaml
+except Exception:
+    print("rollout_output")
+    sys.exit(0)
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    cfg = yaml.safe_load(f) or {}
+rollout = cfg.get("rollout", {}) if isinstance(cfg, dict) else {}
+print(rollout.get("output_dir", "rollout_output"))
+PY
+)
+
+        if [ -d "$OUTPUT_DIR" ]; then
+            if [ -d "/mnt" ]; then
+                DEST="/mnt/$(basename "$OUTPUT_DIR")"
+                if [ -e "$DEST" ]; then
+                    DEST="/mnt/$(basename "$OUTPUT_DIR")_$(date +%Y%m%d_%H%M%S)"
+                fi
+                echo "Moving dataset $OUTPUT_DIR -> $DEST"
+                mv "$OUTPUT_DIR" "$DEST"
+            else
+                echo "/mnt not found; skipping dataset move."
+            fi
+        else
+            echo "Output dir $OUTPUT_DIR not found; skipping dataset move."
+        fi
+    fi
+else
+    echo "Job failed with exit code $JOB_EXIT_CODE."
 fi
 
 # Shutdown logic
-if [ -z "$RUNPOD_POD_ID" ]; then
+if [ "$NO_AUTO_SHUT" = "-noautoshut" ]; then
+    echo "Skipping auto-shutdown (flag -noautoshut set)."
+elif [ -z "$RUNPOD_POD_ID" ]; then
     echo "RUNPOD_POD_ID is not set. Are you running in RunPod?"
     echo "Skipping auto-shutdown."
 else

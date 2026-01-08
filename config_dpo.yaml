@@ -79,6 +79,6 @@ rollout:
   reward_load_in_8bit: false
   debug_log_path: null
   debug_log_all: false
-  debug_log_empty_only: true
+  debug_log_empty_only: false
   debug_log_max: null
   flush_every_batches: 10
