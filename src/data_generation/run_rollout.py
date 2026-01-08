@@ -120,6 +120,14 @@ def _ensure_generation_prompt(prompt_text: str) -> str:
 
 
 def main() -> None:
+    import multiprocessing
+    # Fix for vLLM: "Cannot re-initialize CUDA in forked subprocess"
+    # We must use 'spawn' if CUDA is initialized before forking (which seed_everything does)
+    try:
+        multiprocessing.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass
+
     args = parse_args()
     with open(args.config, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
