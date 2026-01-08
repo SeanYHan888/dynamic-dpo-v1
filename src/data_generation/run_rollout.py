@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from typing import Dict, List, Optional
 
 import torch
@@ -128,6 +129,10 @@ def main() -> None:
     if rollout_cfg["device_map"] is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model.to(device)
+    else:
+        device = next(model.parameters()).device
+
+    print(f"Generator device: {device}")
 
     responses_per_prompt = int(rollout_cfg["responses_per_prompt"])
     gen_kwargs = {
@@ -188,11 +193,25 @@ def main() -> None:
     )
     buffer: List[dict] = []
 
-    def flush(batch: List[dict], responses_f, debug_f) -> bool:
+    def flush(batch: List[dict], responses_f, debug_f, debug_enabled: bool) -> bool:
         nonlocal generated, debug_remaining
-        candidates, raw_candidates = generator.generate_batch(
-            [b["prompt_text"] for b in batch], return_raw=True
-        )
+        start = time.perf_counter()
+        if debug_enabled:
+            candidates, raw_candidates = generator.generate_batch(
+                [b["prompt_text"] for b in batch], return_raw=True
+            )
+        else:
+            candidates = generator.generate_batch([b["prompt_text"] for b in batch])
+            raw_candidates = [None] * len(candidates)
+        elapsed = time.perf_counter() - start
+        total_tokens = 0
+        for cand_list in candidates:
+            total_tokens += sum(len(tokenizer.encode(c)) for c in cand_list)
+        if elapsed > 0:
+            print(
+                f"Batch {len(batch)} prompts | {total_tokens} tokens | "
+                f"{total_tokens / elapsed:.1f} tok/s"
+            )
         for item, cand_list, raw_list in tqdm(
             list(zip(batch, candidates, raw_candidates)),
             desc="Saving responses",
@@ -211,7 +230,7 @@ def main() -> None:
             )
             responses_f.flush()
             generated += 1
-            if debug_f is not None:
+            if debug_f is not None and raw_list is not None:
                 empty_indices = [i for i, resp in enumerate(responses) if not resp]
                 should_log = rollout_cfg["debug_log_all"] or (
                     rollout_cfg["debug_log_empty_only"] and empty_indices
@@ -263,13 +282,13 @@ def main() -> None:
 
             if len(buffer) < batch_size:
                 continue
-            if flush(buffer, responses_f, debug_f if debug_enabled else None):
+            if flush(buffer, responses_f, debug_f if debug_enabled else None, debug_enabled):
                 buffer = []
                 break
             buffer = []
 
         if buffer and (limit is None or generated < int(limit)):
-            flush(buffer, responses_f, debug_f if debug_enabled else None)
+            flush(buffer, responses_f, debug_f if debug_enabled else None, debug_enabled)
 
     if load_in_8bit:
         # Release the generator to free VRAM before loading the RM.
