@@ -4,13 +4,15 @@ from datasets import Dataset
 TAG_RE = re.compile(r"\n\n(Human|Assistant): ?")
 
 
-def strip_one_leading_newline(s: str) -> str:
-    return s[1:] if s.startswith("\n") else s
+def strip_one_leading_newline(text: str) -> str:
+    """Remove a single leading newline to normalize HH blocks."""
+    return text[1:] if text.startswith("\n") else text
 
 
 def parse_hh_to_messages(text: str):
     """
-    Parse Anthropic HH multi-turn text into a list of {role, content} messages.
+    Parse Anthropic HH multi-turn text into [{role, content}, ...].
+    Ensures content is trimmed and skips empty blocks.
     """
     text = str(text).replace("\r\n", "\n").replace("\r", "\n")
     if not text.startswith("\n\nHuman:") and not text.startswith("\n\nAssistant:"):
@@ -31,7 +33,8 @@ def parse_hh_to_messages(text: str):
 
 def build_sft_dataset(ds, tokenizer=None):
     """
-    Convert HH dataset rows into a messages-format dataset for SFT.
+    Convert HH dataset rows into a messages-format dataset for SFT,
+    trimming any trailing assistant response to keep a prompt-only history.
     """
     rows = []
     for row in ds:

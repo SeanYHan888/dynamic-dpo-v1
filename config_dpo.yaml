@@ -58,3 +58,13 @@ margin_log:
   log_dir: logs/margins
   dpo_log_dir: logs/dpo_margins
 
+rollout:
+  output_dir: rollout_output
+  batch_size: 4
+  k: 8
+  temperature: 0.7
+  top_p: 0.9
+  max_new_tokens: 512
+  min_new_tokens: 10
+  limit: null
+  device_map: null

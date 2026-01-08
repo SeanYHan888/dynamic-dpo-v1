@@ -1,24 +1,12 @@
 from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoModelForCausalLM
 from trl import SFTConfig, SFTTrainer
 
 from data_process_sft import build_sft_dataset
+from src.data_generation.utils import LLAMA3_CHAT_TEMPLATE, load_tokenizer
 
 import argparse
 import yaml
-
-
-# Llama 3 format Jinja2 template
-LLAMA3_CHAT_TEMPLATE = (
-    "{% set loop_messages = messages %}"
-    "{% for message in loop_messages %}"
-    "{% set content = message['content'] %}"
-    "{% if loop.index0 == 0 %}"
-    "{{ '<|begin_of_text|>' }}"
-    "{% endif %}"
-    "{{ '<|start_header_id|>' + message['role'] + '<|end_header_id|>\\n\\n' + content | trim + '<|eot_id|>' }}"
-    "{% endfor %}"
-)
 
 
 def load_yaml(path: str):
@@ -37,9 +25,7 @@ def main():
     sft_cfg = config["sft_training"]
     dataset_cfg = config["dataset"]
 
-    tok = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-    if tok.pad_token_id is None:
-        tok.pad_token = tok.eos_token
+    tok = load_tokenizer(model_name, padding_side="right")
     
     # Set the chat template for SFTTrainer to use
     if not tok.chat_template:
