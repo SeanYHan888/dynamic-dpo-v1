@@ -59,7 +59,7 @@ margin_log:
   dpo_log_dir: logs/dpo_margins
 
 rollout:
-  model_name: W-61/hh-llama32-1b-sft-100
+  model_name: W-61/hh-llama32-1b-sft
   output_dir: rollout_output
   batch_size: 5
   responses_per_prompt: 5
