@@ -36,7 +36,7 @@ class RMJudge(BaseJudge):
         self.batch_size = int(batch_size)
         self.max_length = max_length
 
-        # ArmoRM custom modeling expects this symbol; newer transformers dropped it.
+        # ArmoRM custom modeling expects these symbols; newer transformers dropped them.
         self._ensure_llama_docstring()
 
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name or model_name, use_fast=True)
@@ -61,7 +61,15 @@ class RMJudge(BaseJudge):
         if device_map is not None:
             kwargs["device_map"] = device_map
 
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name, **kwargs)
+        try:
+            self.model = AutoModelForSequenceClassification.from_pretrained(model_name, **kwargs)
+        except ImportError as exc:
+            msg = str(exc)
+            if "LLAMA_INPUTS_DOCSTRING" in msg or "LLAMA_START_DOCSTRING" in msg:
+                self._ensure_llama_docstring()
+                self.model = AutoModelForSequenceClassification.from_pretrained(model_name, **kwargs)
+            else:
+                raise
         self.model.eval()
 
         if device_map is None:
@@ -97,6 +105,8 @@ class RMJudge(BaseJudge):
 
             if not hasattr(modeling_llama, "LLAMA_INPUTS_DOCSTRING"):
                 modeling_llama.LLAMA_INPUTS_DOCSTRING = ""
+            if not hasattr(modeling_llama, "LLAMA_START_DOCSTRING"):
+                modeling_llama.LLAMA_START_DOCSTRING = ""
         except Exception:
             # If llama module moves again, we fall back to letting HF raise.
             pass
