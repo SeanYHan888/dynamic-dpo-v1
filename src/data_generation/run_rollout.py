@@ -310,6 +310,7 @@ def main() -> None:
                     {
                         "prompt_messages": item["prompt_messages"],
                         "responses": responses,
+                        "reference_responses": item.get("reference_responses"),
                     },
                     ensure_ascii=False,
                 )
@@ -347,9 +348,13 @@ def main() -> None:
     ) as debug_f:
         for row in tqdm(raw_ds, desc="Rollout prompts"):
             text = row.get("chosen") if isinstance(row, dict) else None
+            rejected_text = row.get("rejected") if isinstance(row, dict) else None
             if not text:
                 continue
             prompt_messages, reference_response = extract_prompt_and_reference(text)
+            _, reference_rejected = (
+                extract_prompt_and_reference(rejected_text) if rejected_text else (None, None)
+            )
             if not prompt_messages or messages_have_raw_role_tags(prompt_messages):
                 continue
             
@@ -362,7 +367,10 @@ def main() -> None:
                         prompt_messages, tokenize=False, add_generation_prompt=True
                     )
                     ),
-                    "reference_response": reference_response,
+                    "reference_responses": {
+                        "chosen": reference_response,
+                        "rejected": reference_rejected,
+                    },
                 }
             )
 
@@ -434,11 +442,14 @@ def main() -> None:
             best_local, worst_local = judge.rank(item["prompt_messages"], list(cleaned))
             best_idx = idx_map[best_local]
             worst_idx = idx_map[worst_local]
+            metadata = dict(meta_base)
+            if "reference_responses" in item:
+                metadata["reference_responses"] = item["reference_responses"]
             record = {
                 "prompt_messages": item["prompt_messages"],
                 "chosen": [{"role": "assistant", "content": responses[best_idx]}],
                 "rejected": [{"role": "assistant", "content": responses[worst_idx]}],
-                "metadata": meta_base,
+                "metadata": metadata,
             }
             judged_f.write(json.dumps(record, ensure_ascii=False) + "\n")
             judged_f.flush()
