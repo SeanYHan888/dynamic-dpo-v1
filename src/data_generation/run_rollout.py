@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debug_log_empty_only", action="store_true", default=None)
     parser.add_argument("--log_throughput", action="store_true", default=None)
     parser.add_argument("--no_log_throughput", action="store_true", default=None)
-    parser.add_argument("--engine", type=str, default="st", choices=["st", "vllm"])
+    parser.add_argument("--engine", type=str, default=None, choices=["st", "vllm"])
     parser.add_argument("--gpu_memory_utilization", type=float, default=None)
     parser.add_argument("--vllm_batch_size", type=int, default=None)
     return parser.parse_args()
@@ -106,9 +106,16 @@ def resolve_rollout_cfg(config: Dict, args: argparse.Namespace) -> Dict:
         "debug_log_max": pick("debug_log_max", None),
         "flush_every_batches": pick("flush_every_batches", 1),
         "log_throughput": rollout_cfg.get("log_throughput", True),
-        "engine": args.engine,
+        "engine": args.engine if args.engine is not None else rollout_cfg.get("engine", "st"),
         "gpu_memory_utilization": pick("gpu_memory_utilization", 0.9),
-        "vllm_batch_size": pick("vllm_batch_size", 500),
+        "vllm_batch_size": (
+            args.vllm_batch_size
+            if args.vllm_batch_size is not None
+            else rollout_cfg.get(
+                "vllm_batch_size",
+                rollout_cfg.get("batch_size", 500),
+            )
+        ),
     }
 
 

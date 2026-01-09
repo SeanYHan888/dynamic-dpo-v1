@@ -68,7 +68,7 @@ rollout:
   responses_per_prompt: 5
   temperature: 0.8
   top_p: 0.9
-  max_new_tokens: 512
+  max_new_tokens: 256
   min_new_tokens: 10
   limit: null
   device_map: null
