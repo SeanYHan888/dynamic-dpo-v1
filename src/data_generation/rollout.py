@@ -157,6 +157,39 @@ class RMJudge(BaseJudge):
         worst_idx = self._rng.choice(worst_indices)
         return best_idx, worst_idx
 
+    def rank_batch(
+        self,
+        prompts: List[str | List[dict]],
+        candidates_list: List[List[str]],
+    ) -> List[Tuple[int, int]]:
+        if len(prompts) != len(candidates_list):
+            raise ValueError("prompts and candidates_list must have the same length.")
+        if not prompts:
+            return []
+
+        texts: List[str] = []
+        spans: List[Tuple[int, int]] = []
+        for prompt, candidates in zip(prompts, candidates_list):
+            if not candidates:
+                raise ValueError("No candidates to rank.")
+            start = len(texts)
+            built = self._build_texts(prompt, candidates)
+            texts.extend(built)
+            spans.append((start, len(built)))
+
+        scores = self._score_texts(texts)
+        results: List[Tuple[int, int]] = []
+        for (start, count), candidates in zip(spans, candidates_list):
+            sub_scores = scores[start : start + count]
+            max_score = max(sub_scores)
+            min_score = min(sub_scores)
+            best_indices = [i for i, s in enumerate(sub_scores) if s == max_score]
+            worst_indices = [i for i, s in enumerate(sub_scores) if s == min_score]
+            best_idx = self._rng.choice(best_indices)
+            worst_idx = self._rng.choice(worst_indices)
+            results.append((best_idx, worst_idx))
+        return results
+
 
 class RolloutGenerator:
     def __init__(
@@ -376,4 +409,3 @@ class VLLMRolloutGenerator:
         # If needed, we can implement return_token_counts by len(completion.token_ids).
         
         return grouped_candidates
-

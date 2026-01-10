@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
         ("judge", str),
         ("reward_model", str),
         ("reward_batch_size", int),
+        ("reward_judge_batch_size", int),
         ("reward_precision", str),
         ("reward_device_map", str),
         ("reward_max_length", int),
@@ -83,6 +84,7 @@ def resolve_rollout_cfg(config: Dict, args: argparse.Namespace) -> Dict:
         "judge": pick("judge", "rm"),
         "reward_model": pick("reward_model", "RLHFlow/ArmoRM-Llama3-8B-v0.1"),
         "reward_batch_size": pick("reward_batch_size", 4),
+        "reward_judge_batch_size": pick("reward_judge_batch_size", 1),
         "reward_precision": pick("reward_precision", None),
         "reward_device_map": pick("reward_device_map", None),
         "reward_max_length": pick("reward_max_length", None),
@@ -436,9 +438,39 @@ def main() -> None:
         seed=int(rollout_cfg["seed"]),
     )
 
+    reward_judge_batch_size = max(1, int(rollout_cfg.get("reward_judge_batch_size", 1)))
     with open(responses_path, "r", encoding="utf-8") as responses_f, open(
         judged_path, "w", encoding="utf-8"
     ) as judged_f:
+        judge_buffer: List[dict] = []
+
+        def flush_judge_batch(batch: List[dict]) -> bool:
+            nonlocal processed
+            prompts = [entry["item"]["prompt_messages"] for entry in batch]
+            candidates_list = [entry["cleaned"] for entry in batch]
+            results = judge.rank_batch(prompts, candidates_list)
+            for entry, (best_local, worst_local) in zip(batch, results):
+                responses = entry["responses"]
+                idx_map = entry["idx_map"]
+                best_idx = idx_map[best_local]
+                worst_idx = idx_map[worst_local]
+                metadata = dict(meta_base)
+                if "reference_responses" in entry["item"]:
+                    metadata["reference_responses"] = entry["item"]["reference_responses"]
+                record = {
+                    "prompt_messages": entry["item"]["prompt_messages"],
+                    "chosen": [{"role": "assistant", "content": responses[best_idx]}],
+                    "rejected": [{"role": "assistant", "content": responses[worst_idx]}],
+                    "metadata": metadata,
+                }
+                judged_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                judged_f.flush()
+                processed += 1
+                if limit is not None and processed >= int(limit):
+                    return True
+            return False
+
+        stop = False
         for line in tqdm(responses_f, desc="RM judging"):
             item = json.loads(line)
             responses = item.get("responses", [])
@@ -446,23 +478,22 @@ def main() -> None:
             if len(nonempty) < 2:
                 continue
             idx_map, cleaned = zip(*nonempty)
-            best_local, worst_local = judge.rank(item["prompt_messages"], list(cleaned))
-            best_idx = idx_map[best_local]
-            worst_idx = idx_map[worst_local]
-            metadata = dict(meta_base)
-            if "reference_responses" in item:
-                metadata["reference_responses"] = item["reference_responses"]
-            record = {
-                "prompt_messages": item["prompt_messages"],
-                "chosen": [{"role": "assistant", "content": responses[best_idx]}],
-                "rejected": [{"role": "assistant", "content": responses[worst_idx]}],
-                "metadata": metadata,
-            }
-            judged_f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            judged_f.flush()
-            processed += 1
-            if limit is not None and processed >= int(limit):
-                break
+            judge_buffer.append(
+                {
+                    "item": item,
+                    "responses": responses,
+                    "idx_map": idx_map,
+                    "cleaned": list(cleaned),
+                }
+            )
+            if len(judge_buffer) >= reward_judge_batch_size:
+                if flush_judge_batch(judge_buffer):
+                    stop = True
+                    break
+                judge_buffer = []
+
+        if not stop and judge_buffer:
+            flush_judge_batch(judge_buffer)
 
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
