@@ -64,6 +64,7 @@ rollout:
   gpu_memory_utilization: 0.9
   model_name: W-61/hh-llama32-1b-sft
   output_dir: rollout_output
+  upload_repo_id: W-61/hh-llama32-1b-rollout-judged
   batch_size: 5
   responses_per_prompt: 5
   temperature: 0.8
