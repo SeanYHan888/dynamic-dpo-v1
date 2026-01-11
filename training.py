@@ -2,7 +2,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from trl import DPOConfig
 
-from dataset_process_hh import build_HH_dataset
+from dataset_process_hh import build_HH_dataset, load_generated_dataset_from_config
 from risk_dpo_trainer import RiskBetaDPOTrainer, RiskBetaDPOConfig
 
 import os
@@ -41,8 +41,12 @@ def main():
     # load dataset
     # transfer the ds into {prompt, chosen, rejected} triples
     dataset_name = config["dataset"]["dataset_name"]
-    raw_ds = load_dataset(dataset_name, split=config["dataset"]["subset"])
-    hh_ds = build_HH_dataset(raw_ds)  
+    dataset_cfg = config["dataset"]
+    raw_ds = load_dataset(dataset_name, split=dataset_cfg["subset"])
+    if bool(dataset_cfg.get("generated_data", False)):
+        hh_ds = load_generated_dataset_from_config(config)
+    else:
+        hh_ds = build_HH_dataset(raw_ds)  
 
     # split train/val
     val_ratio = float(config["dataset"]["val_ratio"])

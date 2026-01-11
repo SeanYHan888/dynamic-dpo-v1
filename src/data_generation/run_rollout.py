@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import time
 from typing import Dict, List, Optional
 
@@ -16,6 +17,17 @@ from .rollout import RMJudge, RolloutGenerator
 from .utils import load_model, load_tokenizer, seed_everything
 
 ASSISTANT_HEADER = "<|start_header_id|>assistant<|end_header_id|>\\n\\n"
+SPECIAL_TOKEN_RE = re.compile(r"<\\|[^>]+?\\|>")
+
+
+def _is_effectively_empty(text: Optional[str]) -> bool:
+    if text is None:
+        return True
+    stripped = text.strip()
+    if not stripped:
+        return True
+    stripped = SPECIAL_TOKEN_RE.sub("", stripped).strip()
+    return not stripped
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -327,7 +339,7 @@ def main() -> None:
             )
             generated += 1
             if debug_f is not None and raw_list is not None:
-                empty_indices = [i for i, resp in enumerate(responses) if not resp]
+                empty_indices = [i for i, resp in enumerate(responses) if _is_effectively_empty(resp)]
                 should_log = rollout_cfg["debug_log_all"] or (
                     rollout_cfg["debug_log_empty_only"] and empty_indices
                 )
@@ -474,7 +486,9 @@ def main() -> None:
         for line in tqdm(responses_f, desc="RM judging"):
             item = json.loads(line)
             responses = item.get("responses", [])
-            nonempty = [(idx, resp) for idx, resp in enumerate(responses) if resp]
+            nonempty = [
+                (idx, resp) for idx, resp in enumerate(responses) if not _is_effectively_empty(resp)
+            ]
             if len(nonempty) < 2:
                 continue
             idx_map, cleaned = zip(*nonempty)

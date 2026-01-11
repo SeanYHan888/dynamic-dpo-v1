@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
-from typing import Dict
+import re
+import tempfile
+from typing import Dict, Iterable, Tuple
 
 import yaml
 
@@ -15,6 +18,7 @@ except ImportError as exc:
 
 
 DEFAULT_JUDGED_FILENAME = "rollout_judged.jsonl"
+SPECIAL_TOKEN_RE = re.compile(r"<\\|[^>]+?\\|>")
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,6 +70,68 @@ def _ensure_file(path: str) -> str:
     return resolved
 
 
+def _normalize_text(text: object) -> str:
+    if text is None:
+        return ""
+    return str(text).replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _is_effectively_empty(text: object) -> bool:
+    stripped = _normalize_text(text).strip()
+    if not stripped:
+        return True
+    stripped = SPECIAL_TOKEN_RE.sub("", stripped).strip()
+    return not stripped
+
+
+def _iter_message_contents(value: object) -> Iterable[str]:
+    if isinstance(value, str) or value is None:
+        yield _normalize_text(value)
+        return
+    if isinstance(value, dict):
+        yield _normalize_text(value.get("content", ""))
+        return
+    if isinstance(value, list):
+        for msg in value:
+            if isinstance(msg, dict):
+                yield _normalize_text(msg.get("content", ""))
+            elif isinstance(msg, str) or msg is None:
+                yield _normalize_text(msg)
+
+
+def _has_nonempty_text(value: object) -> bool:
+    found = False
+    for content in _iter_message_contents(value):
+        found = True
+        if not _is_effectively_empty(content):
+            return True
+    return False if found else False
+
+
+def filter_judged_rollout(input_path: str, output_path: str) -> Tuple[int, int]:
+    total = 0
+    kept = 0
+    with open(input_path, "r", encoding="utf-8") as src, open(
+        output_path, "w", encoding="utf-8"
+    ) as dst:
+        for line_num, line in enumerate(src, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            total += 1
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSON on line {line_num} of {input_path}") from exc
+            if not _has_nonempty_text(record.get("chosen")):
+                continue
+            if not _has_nonempty_text(record.get("rejected")):
+                continue
+            dst.write(json.dumps(record, ensure_ascii=False) + "\n")
+            kept += 1
+    return total, kept
+
+
 def main() -> None:
     args = parse_args()
     with open(args.config, "r", encoding="utf-8") as f:
@@ -85,16 +151,29 @@ def main() -> None:
         exist_ok=True,
         token=token,
     )
-    api.upload_file(
-        path_or_fileobj=judged_path,
-        path_in_repo=path_in_repo,
-        repo_id=repo_id,
-        repo_type=args.repo_type,
-        token=token,
-        commit_message=commit_message,
-        revision=args.revision,
-    )
-    print(f"Uploaded {judged_path} to {repo_id}/{path_in_repo} ({args.repo_type}).")
+    filtered_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
+        ) as tmp:
+            filtered_path = tmp.name
+        total, kept = filter_judged_rollout(judged_path, filtered_path)
+        api.upload_file(
+            path_or_fileobj=filtered_path,
+            path_in_repo=path_in_repo,
+            repo_id=repo_id,
+            repo_type=args.repo_type,
+            token=token,
+            commit_message=commit_message,
+            revision=args.revision,
+        )
+        print(
+            f"Uploaded {kept}/{total} filtered rows from {judged_path} to "
+            f"{repo_id}/{path_in_repo} ({args.repo_type})."
+        )
+    finally:
+        if filtered_path and os.path.exists(filtered_path):
+            os.remove(filtered_path)
 
 
 if __name__ == "__main__":
