@@ -19,6 +19,7 @@ except ImportError as exc:
 
 DEFAULT_JUDGED_FILENAME = "rollout_judged.jsonl"
 SPECIAL_TOKEN_RE = re.compile(r"<\\|[^>]+?\\|>")
+ESCAPED_WHITESPACE_RE = re.compile(r"(?:\\\\n|\\\\r|\\\\t)+")
 
 
 def parse_args() -> argparse.Namespace:
@@ -80,6 +81,7 @@ def _is_effectively_empty(text: object) -> bool:
     stripped = _normalize_text(text).strip()
     if not stripped:
         return True
+    stripped = ESCAPED_WHITESPACE_RE.sub("", stripped)
     stripped = SPECIAL_TOKEN_RE.sub("", stripped).strip()
     return not stripped
 
