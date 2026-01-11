@@ -2,6 +2,8 @@ transformers
 datasets
 tokenizers
 accelerate 
+alpaca-eval
+torch
 peft
 trl
 tqdm
