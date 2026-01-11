@@ -371,15 +371,7 @@ class VLLMRolloutGenerator:
         
         # Stop tokens
         stop_strings = generation_kwargs.get("stop_strings", DEFAULT_STOP_STRINGS)
-        stop_token_ids = generation_kwargs.get("eos_token_id", [])
-        if isinstance(stop_token_ids, int):
-            stop_token_ids = [stop_token_ids]
-        
-        # Add EOT if known
-        eot_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
-        if eot_id is not None and eot_id != self.tokenizer.unk_token_id:
-            if isinstance(stop_token_ids, list):
-                stop_token_ids.append(eot_id)
+        stop_token_ids = self._resolve_stop_token_ids(generation_kwargs.get("eos_token_id", []))
 
         sampling_params = SamplingParams(
             n=n,
@@ -409,3 +401,31 @@ class VLLMRolloutGenerator:
         # If needed, we can implement return_token_counts by len(completion.token_ids).
         
         return grouped_candidates
+# stop_tokens handling
+    def _resolve_stop_token_ids(self, stop_token_ids) -> List[int]:
+        resolved: List[int] = []
+
+        for token in DEFAULT_STOP_TOKENS:
+            if isinstance(token, int):
+                resolved.append(token)
+                continue
+            token_id = self.tokenizer.convert_tokens_to_ids(token)
+            if token_id is not None and token_id != self.tokenizer.unk_token_id:
+                resolved.append(token_id)
+                continue
+        # fallback for custom stop tokens
+            encoded = self.tokenizer.encode(token, add_special_tokens=False)
+            if len(encoded) == 1:
+                resolved.append(encoded[0])
+
+        if isinstance(stop_token_ids, int):
+            stop_token_ids = [stop_token_ids]
+        if stop_token_ids:
+            for token_id in stop_token_ids:
+                if isinstance(token_id, int):
+                    resolved.append(token_id)
+
+        eos_id = self.tokenizer.eos_token_id
+        if eos_id is not None:
+            resolved.append(eos_id)
+        return list(dict.fromkeys(resolved))

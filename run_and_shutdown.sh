@@ -33,6 +33,7 @@ done
 if [ "$MODE" = "rollout" ]; then
     echo "Starting rollout data generation..."
     uv run python -m src.data_generation.run_rollout --config "$CONFIG_PATH"
+    uv run python -m src.data_generation.upload_judged_rollout --config config_dpo.yaml
     JOB_EXIT_CODE=$?
 elif [ "$MODE" = "sft" ]; then
     echo "Starting SFT training..."

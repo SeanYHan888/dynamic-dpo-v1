@@ -2,8 +2,7 @@ from datasets import load_dataset
 from transformers import AutoModelForCausalLM
 from trl import SFTConfig, SFTTrainer
 
-from data_process_sft import build_sft_dataset
-from src.data_generation.utils import LLAMA3_CHAT_TEMPLATE, load_tokenizer
+from data_process_sft import LLAMA3_CHAT_TEMPLATE, build_sft_dataset, load_tokenizer
 
 import argparse
 import yaml

@@ -1,7 +1,40 @@
 import re
 from datasets import Dataset
+from transformers import AutoTokenizer
 
 TAG_RE = re.compile(r"\n\n(Human|Assistant): ?")
+
+# Llama 3 format Jinja2 template used by SFT prompt rendering.
+LLAMA3_CHAT_TEMPLATE = (
+    "{% set loop_messages = messages %}"
+    "{% for message in loop_messages %}"
+    "{% set content = message['content'] %}"
+    "{% if loop.index0 == 0 %}"
+    "{{ '<|begin_of_text|>' }}"
+    "{% endif %}"
+    "{{ '<|start_header_id|>' + message['role'] + '<|end_header_id|>\\n\\n' + content | trim + '<|eot_id|>' }}"
+    "{% endfor %}"
+    "{% if add_generation_prompt %}"
+    "{{ '<|start_header_id|>assistant<|end_header_id|>\\n\\n' }}"
+    "{% endif %}"
+)
+
+
+def load_tokenizer(
+    model_name: str,
+    *,
+    padding_side: str = "left",
+    add_chat_template: bool = True,
+    use_fast: bool = True,
+) -> AutoTokenizer:
+    """Load tokenizer with padding and template defaults for chat models."""
+    tok = AutoTokenizer.from_pretrained(model_name, use_fast=use_fast)
+    tok.padding_side = padding_side
+    if tok.pad_token_id is None:
+        tok.pad_token = tok.eos_token
+    if add_chat_template and not tok.chat_template:
+        tok.chat_template = LLAMA3_CHAT_TEMPLATE
+    return tok
 
 
 def strip_one_leading_newline(text: str) -> str:

@@ -3,9 +3,35 @@ from __future__ import annotations
 import re
 from typing import List, Optional, Tuple
 
-from data_process_sft import parse_hh_to_messages
-
+TAG_RE = re.compile(r"\n\n(Human|Assistant): ?")
 RAW_ROLE_RE = re.compile(r"(?:^|\n\n)(Human|Assistant):")
+
+
+def strip_one_leading_newline(text: str) -> str:
+    """Remove a single leading newline to normalize HH blocks. copy of data_process_sft.py"""
+    return text[1:] if text.startswith("\n") else text
+
+
+def parse_hh_to_messages(text: str):
+    """
+    Parse Anthropic HH multi-turn text into [{role, content}, ...].
+    Ensures content is trimmed and skips empty blocks. copy of data_process_sft.py
+    """
+    text = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    if not text.startswith("\n\nHuman:") and not text.startswith("\n\nAssistant:"):
+        text = "\n\n" + text
+
+    parts = TAG_RE.split(text)
+    messages = []
+    for i in range(1, len(parts), 2):
+        role_tag = parts[i]
+        content = parts[i + 1] if i + 1 < len(parts) else ""
+        content = strip_one_leading_newline(content).strip()
+        if not content:
+            continue
+        role = "user" if role_tag == "Human" else "assistant"
+        messages.append({"role": role, "content": content})
+    return messages
 
 
 def clean_content(text: str) -> str:
