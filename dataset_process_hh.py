@@ -1,6 +1,8 @@
 from datasets import load_dataset, Dataset
 from typing import Any, Dict, Iterable, List, Optional
 
+from util import LLAMA3_CHAT_TEMPLATE, parse_hh_to_messages
+
 ASSISTANT_TAG = "\n\nAssistant:"
 
 # delete the \n at the beginning of the response
@@ -162,6 +164,72 @@ def load_generated_dataset_from_config(config: Dict[str, Any]) -> Dataset:
         raise ValueError("Missing dataset.dataset_name in config.")
     subset = dataset_cfg.get("subset", "train")
     return load_generated_hf_dataset(dataset_name, subset=subset)
+
+
+def _ensure_chat_template(tokenizer: Any) -> None:
+    if not getattr(tokenizer, "chat_template", None):
+        tokenizer.chat_template = LLAMA3_CHAT_TEMPLATE
+
+
+def _render_response_with_chat_template(
+    messages: List[Dict[str, str]],
+    response: str,
+    *,
+    tokenizer: Any,
+    prompt_text: str,
+) -> Optional[str]:
+    response = _normalize_text(response).strip()
+    if not response:
+        return None
+    full_messages = messages + [{"role": "assistant", "content": response}]
+    full_text = tokenizer.apply_chat_template(
+        full_messages, tokenize=False, add_generation_prompt=False
+    )
+    if full_text.startswith(prompt_text):
+        rendered = full_text[len(prompt_text):]
+    else:
+        rendered = response
+    rendered = rendered.strip()
+    return rendered if rendered else None
+
+
+def apply_chat_template_to_dataset(ds: Dataset, tokenizer: Any) -> Dataset:
+    _ensure_chat_template(tokenizer)
+    rows: List[Dict[str, str]] = []
+    for row in ds:
+        prompt_text = _normalize_text(row.get("prompt", "")).strip()
+        chosen_text = row.get("chosen", "")
+        rejected_text = row.get("rejected", "")
+        if not prompt_text:
+            continue
+
+        messages = parse_hh_to_messages(prompt_text)
+        if not messages or messages[-1]["role"] != "user":
+            continue
+
+        prompt_rendered = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        if not prompt_rendered:
+            continue
+
+        chosen_rendered = _render_response_with_chat_template(
+            messages, str(chosen_text), tokenizer=tokenizer, prompt_text=prompt_rendered
+        )
+        rejected_rendered = _render_response_with_chat_template(
+            messages, str(rejected_text), tokenizer=tokenizer, prompt_text=prompt_rendered
+        )
+        if not chosen_rendered or not rejected_rendered:
+            continue
+
+        rows.append(
+            {
+                "prompt": prompt_rendered,
+                "chosen": chosen_rendered,
+                "rejected": rejected_rendered,
+            }
+        )
+    return Dataset.from_list(rows)
 
 
 
