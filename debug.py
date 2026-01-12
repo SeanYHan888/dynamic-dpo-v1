@@ -7,11 +7,27 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 def _tensor_to_list(value: Any, idx: int) -> Optional[List[int]]:
     if value is None:
         return None
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return []
+        first = value[0]
+        if isinstance(first, (list, tuple)):
+            return list(value[idx])
+        return list(value)
     if hasattr(value, "tolist"):
         if value.ndim == 1:
             return value.tolist()
         return value[idx].tolist()
     return None
+
+
+def _safe_get(sample: Any, key: str) -> Any:
+    if isinstance(sample, dict):
+        return sample.get(key)
+    try:
+        return sample[key]
+    except Exception:
+        return getattr(sample, key, None)
 
 
 def _trim_by_mask(values: Optional[List[int]], mask: Optional[List[int]]) -> Optional[List[int]]:
@@ -93,9 +109,9 @@ def _write_jsonl(path: str, records: Iterable[Dict[str, Any]]) -> None:
 
 def _extract_raw_record(sample: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "prompt": sample.get("prompt"),
-        "chosen": sample.get("chosen"),
-        "rejected": sample.get("rejected"),
+        "prompt": _safe_get(sample, "prompt"),
+        "chosen": _safe_get(sample, "chosen"),
+        "rejected": _safe_get(sample, "rejected"),
     }
 
 
@@ -116,6 +132,32 @@ def _log_samples_from_indices(
         rec = _build_record(_extract_raw_record(raw), batch, i, chosen_labels, rejected_labels)
         records.append(rec)
     _write_jsonl(output_path, records)
+
+
+def _sample_from_iterable(
+    dataset: Iterable[Dict[str, Any]],
+    *,
+    first_n: int,
+    random_n: int,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    rng = random.Random(0)
+    first_samples: List[Dict[str, Any]] = []
+    random_samples: List[Dict[str, Any]] = []
+    seen_after_first = 0
+    for sample in dataset:
+        if len(first_samples) < first_n:
+            first_samples.append(sample)
+            continue
+        if random_n <= 0:
+            continue
+        seen_after_first += 1
+        if len(random_samples) < random_n:
+            random_samples.append(sample)
+        else:
+            j = rng.randint(0, seen_after_first - 1)
+            if j < random_n:
+                random_samples[j] = sample
+    return first_samples, random_samples
 
 
 def _log_samples_from_dataloader(
@@ -161,6 +203,7 @@ def log_dpo_debug_samples(
     output_dir: str = "debug_logs",
     first_n: int = 10,
     random_n: int = 5,
+    raw_dataset: Any = None,
 ) -> Optional[str]:
     try:
         os.makedirs(output_dir, exist_ok=True)
@@ -172,25 +215,44 @@ def log_dpo_debug_samples(
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("")
 
-    dataset = getattr(trainer, "train_dataset", None)
-    if dataset is not None and hasattr(dataset, "__len__"):
-        total = len(dataset)
-        first_indices = list(range(min(first_n, total)))
-        remaining = total - len(first_indices)
-        random_indices: List[int] = []
-        if random_n > 0 and remaining > 0:
-            rng = random.Random(0)
-            random_indices = rng.sample(
-                range(len(first_indices), total),
-                k=min(random_n, remaining),
+    dataset = raw_dataset if raw_dataset is not None else getattr(trainer, "train_dataset", None)
+    if dataset is not None:
+        if hasattr(dataset, "with_format"):
+            try:
+                dataset = dataset.with_format("python")
+            except Exception:
+                pass
+        if hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__"):
+            total = len(dataset)
+            first_indices = list(range(min(first_n, total)))
+            remaining = total - len(first_indices)
+            random_indices: List[int] = []
+            if random_n > 0 and remaining > 0:
+                rng = random.Random(0)
+                random_indices = rng.sample(
+                    range(len(first_indices), total),
+                    k=min(random_n, remaining),
+                )
+            _log_samples_from_indices(
+                trainer, dataset, first_indices, output_path=output_path
             )
-        _log_samples_from_indices(
-            trainer, dataset, first_indices, output_path=output_path
-        )
-        _log_samples_from_indices(
-            trainer, dataset, random_indices, output_path=output_path
-        )
-        return output_path
+            _log_samples_from_indices(
+                trainer, dataset, random_indices, output_path=output_path
+            )
+            return output_path
+        if hasattr(dataset, "__iter__"):
+            first_samples, random_samples = _sample_from_iterable(
+                dataset, first_n=first_n, random_n=random_n
+            )
+            if first_samples:
+                _log_samples_from_indices(
+                    trainer, first_samples, list(range(len(first_samples))), output_path=output_path
+                )
+            if random_samples:
+                _log_samples_from_indices(
+                    trainer, random_samples, list(range(len(random_samples))), output_path=output_path
+                )
+            return output_path
 
     dataloader = trainer.get_train_dataloader()
     _log_samples_from_dataloader(

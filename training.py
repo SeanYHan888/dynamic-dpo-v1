@@ -61,6 +61,11 @@ def main():
     split = hh_ds.train_test_split(test_size=val_ratio, seed=seed)
     train_ds = split["train"]
     eval_ds = split["test"]
+    debug_train_ds = train_ds
+    try:
+        debug_train_ds = train_ds.with_format("python")
+    except Exception:
+        pass
 
     # max_len, maybe it's useful, keep it now
     max_len = int(config["dataset"]["max_len"])
@@ -137,7 +142,7 @@ def main():
     )
 
     try:
-        log_dpo_debug_samples(trainer)
+        log_dpo_debug_samples(trainer, raw_dataset=debug_train_ds)
     except Exception:
         pass
 
