@@ -19,7 +19,7 @@ except ImportError as exc:
 
 DEFAULT_JUDGED_FILENAME = "rollout_judged.jsonl"
 SPECIAL_TOKEN_RE = re.compile(r"<\\|[^>]+?\\|>")
-ESCAPED_WHITESPACE_RE = re.compile(r"(?:\\[nrt])+")
+ESCAPED_WHITESPACE_RE = re.compile(r"(?:\\+[nrt])+")
 
 
 def parse_args() -> argparse.Namespace:
