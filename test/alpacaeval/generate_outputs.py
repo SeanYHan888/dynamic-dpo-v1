@@ -153,7 +153,8 @@ def generate_model_outputs(
 
     do_sample = temperature > 0
 
-    for batch in tqdm(_batched(dataset, batch_size), desc="Generating"):
+    progress = tqdm(total=len(dataset), desc="Generating", unit="examples")
+    for batch in _batched(dataset, batch_size):
         instructions = [item["instruction"] for item in batch]
         prompts = [_format_prompt(tokenizer, inst) for inst in instructions]
 
@@ -190,6 +191,9 @@ def generate_model_outputs(
                     "generator": model_name,
                 }
             )
+        progress.update(len(batch))
+
+    progress.close()
 
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(outputs, f, indent=2, ensure_ascii=False)
