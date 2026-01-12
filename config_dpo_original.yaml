@@ -3,9 +3,9 @@ ref_name: meta-llama/Llama-3.2-1B
 precision: bf16
 
 dataset:
-  dataset_name: jackf857/hh-llama32-1b-rollout-judged
-  generated_data: true
-  chat_template: true
+  dataset_name: Anthropic/hh-rlhf
+  generated_data: false
+  chat_template: false
   subset: train[:30%]
   val_ratio: 0.1
   seed: 42
@@ -23,9 +23,9 @@ dpo_training:
   max_grad_norm: 10
   warmup_steps: 120
   report: wandb_dpo_project
-  run_name: trl-dynamic-beta
-  save_dpo_dir: dpo_model
-  save_dir: trl_dynamic_beta_dpo
+  run_name: trl-original-dpo
+  save_dpo_dir: dpo_model_original
+  save_dir: trl_original_dpo
 
 sft_training:
   learning_rate: 5e-6
@@ -50,15 +50,15 @@ risk_test:
 beta_update:
   beta_0: 0.1
   gamma: 2.0
-  alpha: 0.005
+  alpha: 0.0
   beta_max: 2.0
   beta_min: 0.0
 
 margin_log:
   jsonl_sample_size: 64
   save_per_rank: False
-  log_dir: logs/margins
-  dpo_log_dir: logs/dpo_margins
+  log_dir: logs/margins_original
+  dpo_log_dir: logs/dpo_margins_original
 
 rollout:
   engine: vllm
