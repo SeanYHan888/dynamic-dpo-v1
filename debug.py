@@ -134,7 +134,7 @@ def _log_samples_from_dataloader(
 def log_dpo_debug_samples(
     trainer: Any,
     *,
-    output_dir: str = "/debug_logs",
+    output_dir: str = "debug_logs/",
     first_n: int = 10,
     random_n: int = 5,
 ) -> Optional[str]:
