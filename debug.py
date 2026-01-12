@@ -3,8 +3,6 @@ import os
 import random
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-import torch
-
 
 def _tensor_to_list(value: Any, idx: int) -> Optional[List[int]]:
     if value is None:
@@ -14,6 +12,29 @@ def _tensor_to_list(value: Any, idx: int) -> Optional[List[int]]:
             return value.tolist()
         return value[idx].tolist()
     return None
+
+
+def _trim_by_mask(values: Optional[List[int]], mask: Optional[List[int]]) -> Optional[List[int]]:
+    if values is None:
+        return None
+    if not mask:
+        return list(values)
+    return [val for val, flag in zip(values, mask) if flag]
+
+
+def _full_input_ids(batch: Dict[str, Any], idx: int, key: str) -> Optional[List[int]]:
+    input_ids = _tensor_to_list(batch.get(f"{key}_input_ids"), idx)
+    attention_mask = _tensor_to_list(batch.get(f"{key}_attention_mask"), idx)
+    if input_ids is None:
+        return None
+    sequence = _trim_by_mask(input_ids, attention_mask)
+    prompt_ids = _tensor_to_list(batch.get("prompt_input_ids"), idx)
+    prompt_mask = _tensor_to_list(batch.get("prompt_attention_mask"), idx)
+    prompt = _trim_by_mask(prompt_ids, prompt_mask)
+    if prompt and sequence is not None:
+        if sequence[: len(prompt)] != prompt:
+            return prompt + sequence
+    return sequence
 
 
 def _get_labels(trainer: Any, batch: Dict[str, Any]) -> Tuple[Any, Any]:
@@ -49,24 +70,33 @@ def _build_record(
     chosen_labels: Any,
     rejected_labels: Any,
 ) -> Dict[str, Any]:
-    record = {
+    return {
         "raw_record": raw_record,
         "chosen_input_ids": _tensor_to_list(batch.get("chosen_input_ids"), idx),
         "chosen_attention_mask": _tensor_to_list(batch.get("chosen_attention_mask"), idx),
         "chosen_labels": _tensor_to_list(chosen_labels, idx),
+        "chosen_full_input_ids": _full_input_ids(batch, idx, "chosen"),
         "rejected_input_ids": _tensor_to_list(batch.get("rejected_input_ids"), idx),
         "rejected_attention_mask": _tensor_to_list(batch.get("rejected_attention_mask"), idx),
         "rejected_labels": _tensor_to_list(rejected_labels, idx),
+        "rejected_full_input_ids": _full_input_ids(batch, idx, "rejected"),
         "prompt_input_ids": _tensor_to_list(batch.get("prompt_input_ids"), idx),
         "prompt_attention_mask": _tensor_to_list(batch.get("prompt_attention_mask"), idx),
     }
-    return record
 
 
 def _write_jsonl(path: str, records: Iterable[Dict[str, Any]]) -> None:
     with open(path, "a", encoding="utf-8") as f:
         for record in records:
-            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _extract_raw_record(sample: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "prompt": sample.get("prompt"),
+        "chosen": sample.get("chosen"),
+        "rejected": sample.get("rejected"),
+    }
 
 
 def _log_samples_from_indices(
@@ -74,7 +104,6 @@ def _log_samples_from_indices(
     dataset: Any,
     indices: Sequence[int],
     *,
-    sample_type: str,
     output_path: str,
 ) -> None:
     if not indices:
@@ -84,9 +113,7 @@ def _log_samples_from_indices(
     chosen_labels, rejected_labels = _get_labels(trainer, batch)
     records = []
     for i, raw in enumerate(raw_samples):
-        rec = _build_record(dict(raw), batch, i, chosen_labels, rejected_labels)
-        rec["sample_type"] = sample_type
-        rec["dataset_index"] = int(indices[i])
+        rec = _build_record(_extract_raw_record(raw), batch, i, chosen_labels, rejected_labels)
         records.append(rec)
     _write_jsonl(output_path, records)
 
@@ -114,18 +141,15 @@ def _log_samples_from_dataloader(
             }
             record = _build_record(raw_record, batch, idx, chosen_labels, rejected_labels)
             if first_written < first_n:
-                record["sample_type"] = "first"
                 _write_jsonl(output_path, [record])
                 first_written += 1
                 continue
             random_seen += 1
             if len(random_records) < random_n:
-                record["sample_type"] = "random"
                 random_records.append(record)
             else:
                 j = rng.randint(0, random_seen - 1)
                 if j < random_n:
-                    record["sample_type"] = "random"
                     random_records[j] = record
     if random_records:
         _write_jsonl(output_path, random_records)
@@ -134,7 +158,7 @@ def _log_samples_from_dataloader(
 def log_dpo_debug_samples(
     trainer: Any,
     *,
-    output_dir: str = "debug_logs/",
+    output_dir: str = "debug_logs",
     first_n: int = 10,
     random_n: int = 5,
 ) -> Optional[str]:
@@ -161,10 +185,10 @@ def log_dpo_debug_samples(
                 k=min(random_n, remaining),
             )
         _log_samples_from_indices(
-            trainer, dataset, first_indices, sample_type="first", output_path=output_path
+            trainer, dataset, first_indices, output_path=output_path
         )
         _log_samples_from_indices(
-            trainer, dataset, random_indices, sample_type="random", output_path=output_path
+            trainer, dataset, random_indices, output_path=output_path
         )
         return output_path
 
