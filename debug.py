@@ -121,9 +121,9 @@ def _log_samples_from_indices(
     indices: Sequence[int],
     *,
     output_path: str,
-) -> None:
+) -> List[Dict[str, Any]]:
     if not indices:
-        return
+        return []
     raw_samples = [dataset[i] for i in indices]
     batch = trainer.data_collator(raw_samples)
     chosen_labels, rejected_labels = _get_labels(trainer, batch)
@@ -132,6 +132,7 @@ def _log_samples_from_indices(
         rec = _build_record(_extract_raw_record(raw), batch, i, chosen_labels, rejected_labels)
         records.append(rec)
     _write_jsonl(output_path, records)
+    return records
 
 
 def _sample_from_iterable(
@@ -166,6 +167,7 @@ def _log_samples_from_dataloader(
     *,
     first_n: int,
     random_n: int,
+    console_n: int,
     output_path: str,
 ) -> None:
     rng = random.Random(0)
@@ -184,6 +186,8 @@ def _log_samples_from_dataloader(
             record = _build_record(raw_record, batch, idx, chosen_labels, rejected_labels)
             if first_written < first_n:
                 _write_jsonl(output_path, [record])
+                if first_written < console_n:
+                    print(json.dumps(record, ensure_ascii=False))
                 first_written += 1
                 continue
             random_seen += 1
@@ -204,6 +208,7 @@ def log_dpo_debug_samples(
     first_n: int = 10,
     random_n: int = 5,
     raw_dataset: Any = None,
+    console_n: int = 5,
 ) -> Optional[str]:
     try:
         os.makedirs(output_dir, exist_ok=True)
@@ -233,21 +238,28 @@ def log_dpo_debug_samples(
                     range(len(first_indices), total),
                     k=min(random_n, remaining),
                 )
-            _log_samples_from_indices(
-                trainer, dataset, first_indices, output_path=output_path
-            )
-            _log_samples_from_indices(
-                trainer, dataset, random_indices, output_path=output_path
-            )
-            return output_path
+            try:
+                first_records = _log_samples_from_indices(
+                    trainer, dataset, first_indices, output_path=output_path
+                )
+                for rec in first_records[: max(0, console_n)]:
+                    print(json.dumps(rec, ensure_ascii=False))
+                _log_samples_from_indices(
+                    trainer, dataset, random_indices, output_path=output_path
+                )
+                return output_path
+            except Exception as exc:
+                print(f"Debug logging failed on indexed dataset: {exc}")
         if hasattr(dataset, "__iter__"):
             first_samples, random_samples = _sample_from_iterable(
                 dataset, first_n=first_n, random_n=random_n
             )
             if first_samples:
-                _log_samples_from_indices(
+                first_records = _log_samples_from_indices(
                     trainer, first_samples, list(range(len(first_samples))), output_path=output_path
                 )
+                for rec in first_records[: max(0, console_n)]:
+                    print(json.dumps(rec, ensure_ascii=False))
             if random_samples:
                 _log_samples_from_indices(
                     trainer, random_samples, list(range(len(random_samples))), output_path=output_path
@@ -255,11 +267,15 @@ def log_dpo_debug_samples(
             return output_path
 
     dataloader = trainer.get_train_dataloader()
-    _log_samples_from_dataloader(
-        trainer,
-        dataloader,
-        first_n=first_n,
-        random_n=random_n,
-        output_path=output_path,
-    )
+    try:
+        _log_samples_from_dataloader(
+            trainer,
+            dataloader,
+            first_n=first_n,
+            random_n=random_n,
+            console_n=console_n,
+            output_path=output_path,
+        )
+    except Exception as exc:
+        print(f"Debug logging failed on dataloader: {exc}")
     return output_path
