@@ -117,19 +117,26 @@ def _extract_raw_record(sample: Dict[str, Any]) -> Dict[str, Any]:
 
 def _log_samples_from_indices(
     trainer: Any,
-    dataset: Any,
+    collate_dataset: Any,
     indices: Sequence[int],
     *,
     output_path: str,
+    raw_dataset: Any = None,
 ) -> List[Dict[str, Any]]:
     if not indices:
         return []
-    raw_samples = [dataset[i] for i in indices]
+    raw_samples = [collate_dataset[i] for i in indices]
     batch = trainer.data_collator(raw_samples)
     chosen_labels, rejected_labels = _get_labels(trainer, batch)
     records = []
-    for i, raw in enumerate(raw_samples):
-        rec = _build_record(_extract_raw_record(raw), batch, i, chosen_labels, rejected_labels)
+    for i, sample_idx in enumerate(indices):
+        raw_sample = raw_samples[i]
+        if raw_dataset is not None and hasattr(raw_dataset, "__getitem__"):
+            try:
+                raw_sample = raw_dataset[sample_idx]
+            except Exception:
+                raw_sample = raw_samples[i]
+        rec = _build_record(_extract_raw_record(raw_sample), batch, i, chosen_labels, rejected_labels)
         records.append(rec)
     _write_jsonl(output_path, records)
     return records
@@ -220,15 +227,21 @@ def log_dpo_debug_samples(
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("")
 
-    dataset = raw_dataset if raw_dataset is not None else getattr(trainer, "train_dataset", None)
-    if dataset is not None:
-        if hasattr(dataset, "with_format"):
+    collate_dataset = getattr(trainer, "train_dataset", None)
+    dataset = raw_dataset if raw_dataset is not None else collate_dataset
+    if collate_dataset is not None:
+        if hasattr(collate_dataset, "with_format"):
+            try:
+                collate_dataset = collate_dataset.with_format("python")
+            except Exception:
+                pass
+        if dataset is not None and hasattr(dataset, "with_format"):
             try:
                 dataset = dataset.with_format("python")
             except Exception:
                 pass
-        if hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__"):
-            total = len(dataset)
+        if hasattr(collate_dataset, "__len__") and hasattr(collate_dataset, "__getitem__"):
+            total = len(collate_dataset)
             first_indices = list(range(min(first_n, total)))
             remaining = total - len(first_indices)
             random_indices: List[int] = []
@@ -240,29 +253,45 @@ def log_dpo_debug_samples(
                 )
             try:
                 first_records = _log_samples_from_indices(
-                    trainer, dataset, first_indices, output_path=output_path
+                    trainer,
+                    collate_dataset,
+                    first_indices,
+                    output_path=output_path,
+                    raw_dataset=dataset,
                 )
                 for rec in first_records[: max(0, console_n)]:
                     print(json.dumps(rec, ensure_ascii=False))
                 _log_samples_from_indices(
-                    trainer, dataset, random_indices, output_path=output_path
+                    trainer,
+                    collate_dataset,
+                    random_indices,
+                    output_path=output_path,
+                    raw_dataset=dataset,
                 )
                 return output_path
             except Exception as exc:
                 print(f"Debug logging failed on indexed dataset: {exc}")
-        if hasattr(dataset, "__iter__"):
+        if hasattr(collate_dataset, "__iter__"):
             first_samples, random_samples = _sample_from_iterable(
-                dataset, first_n=first_n, random_n=random_n
+                collate_dataset, first_n=first_n, random_n=random_n
             )
             if first_samples:
                 first_records = _log_samples_from_indices(
-                    trainer, first_samples, list(range(len(first_samples))), output_path=output_path
+                    trainer,
+                    first_samples,
+                    list(range(len(first_samples))),
+                    output_path=output_path,
+                    raw_dataset=None,
                 )
                 for rec in first_records[: max(0, console_n)]:
                     print(json.dumps(rec, ensure_ascii=False))
             if random_samples:
                 _log_samples_from_indices(
-                    trainer, random_samples, list(range(len(random_samples))), output_path=output_path
+                    trainer,
+                    random_samples,
+                    list(range(len(random_samples))),
+                    output_path=output_path,
+                    raw_dataset=None,
                 )
             return output_path
 
