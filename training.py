@@ -7,6 +7,7 @@ from dataset_process_hh import (
     load_generated_dataset_from_config,
     apply_chat_template_to_dataset,
 )
+from debug import log_dpo_debug_samples
 from risk_dpo_trainer import RiskBetaDPOTrainer, RiskBetaDPOConfig
 
 import os
@@ -134,6 +135,11 @@ def main():
         dynamic_cfg=dyn_cfg,
         processing_class=None
     )
+
+    try:
+        log_dpo_debug_samples(trainer)
+    except Exception:
+        pass
 
     trainer.train()
     trainer.save_model(os.path.join(args.output_dir, "final"))
