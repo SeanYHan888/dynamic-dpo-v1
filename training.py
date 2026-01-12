@@ -52,7 +52,7 @@ def main():
         hh_ds = load_generated_dataset_from_config(config)
     else:
         hh_ds = build_HH_dataset(raw_ds)  
-    if bool(dataset_cfg.get("chat_template", False)):
+    if bool(dataset_cfg.get("generated_data", False)) and bool(dataset_cfg.get("chat_template", False)):
         hh_ds = apply_chat_template_to_dataset(hh_ds, tok)
 
     # split train/val
