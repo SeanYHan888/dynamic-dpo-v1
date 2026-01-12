@@ -7,18 +7,70 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 from typing import Iterable, List
 
 import torch
 from datasets import load_dataset
+from huggingface_hub import HfApi, hf_hub_download
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 
-def load_alpacaeval_dataset() -> List[dict]:
-    """Load the AlpacaEval evaluation split."""
-    dataset = load_dataset("tatsu-lab/alpaca_eval", "alpaca_eval")
-    return list(dataset["eval"])
+def _load_dataset_from_file(data_file: str) -> List[dict]:
+    suffix = Path(data_file).suffix.lower()
+    if suffix in {".json", ".jsonl"}:
+        dataset = load_dataset("json", data_files=data_file)
+    elif suffix == ".parquet":
+        dataset = load_dataset("parquet", data_files=data_file)
+    else:
+        raise ValueError(f"Unsupported data file format: {data_file}")
+
+    split = "train" if "train" in dataset else next(iter(dataset.keys()))
+    return list(dataset[split])
+
+
+def _select_dataset_file(repo_id: str) -> str:
+    api = HfApi()
+    try:
+        files = api.list_repo_files(repo_id=repo_id, repo_type="dataset")
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to list AlpacaEval dataset files. "
+            "Pass --data_file with a local path."
+        ) from exc
+
+    candidates = [
+        file
+        for file in files
+        if file.lower().endswith((".json", ".jsonl", ".parquet"))
+    ]
+    if not candidates:
+        raise RuntimeError(
+            "No JSON/Parquet files found in the AlpacaEval dataset repo."
+        )
+
+    preferred = []
+    for file in candidates:
+        lowered = file.lower()
+        if "alpaca_eval" in lowered and "annotation" not in lowered and "leaderboard" not in lowered:
+            preferred.append(file)
+
+    return sorted(preferred or candidates)[0]
+
+
+def load_alpacaeval_dataset(
+    repo_id: str = "tatsu-lab/alpaca_eval",
+    data_file: str | None = None,
+) -> List[dict]:
+    """Load the AlpacaEval evaluation data without dataset scripts."""
+    resolved_file = data_file or os.getenv("ALPACAEVAL_DATA_FILE")
+    if resolved_file is None:
+        filename = _select_dataset_file(repo_id)
+        resolved_file = hf_hub_download(
+            repo_id=repo_id, repo_type="dataset", filename=filename
+        )
+    return _load_dataset_from_file(resolved_file)
 
 
 def _format_prompt(tokenizer: AutoTokenizer, instruction: str) -> str:
@@ -67,6 +119,8 @@ def generate_model_outputs(
     max_input_tokens: int = 2048,
     max_instances: int | None = None,
     seed: int | None = 42,
+    dataset_repo: str = "tatsu-lab/alpaca_eval",
+    data_file: str | None = None,
 ) -> None:
     """Generate outputs for AlpacaEval prompts using the specified model."""
     resolved_device = _resolve_device(device)
@@ -90,7 +144,7 @@ def generate_model_outputs(
         model = model.to(resolved_device)
     model.eval()
 
-    dataset = load_alpacaeval_dataset()
+    dataset = load_alpacaeval_dataset(repo_id=dataset_repo, data_file=data_file)
     if max_instances is not None:
         dataset = dataset[:max_instances]
 
@@ -201,6 +255,18 @@ def main() -> None:
         help="Limit the number of AlpacaEval prompts",
     )
     parser.add_argument(
+        "--dataset_repo",
+        type=str,
+        default="tatsu-lab/alpaca_eval",
+        help="HuggingFace dataset repo ID",
+    )
+    parser.add_argument(
+        "--data_file",
+        type=str,
+        default=None,
+        help="Local dataset file path (JSON/JSONL/Parquet)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -219,6 +285,8 @@ def main() -> None:
         max_input_tokens=args.max_input_tokens,
         max_instances=args.max_instances,
         seed=args.seed,
+        dataset_repo=args.dataset_repo,
+        data_file=args.data_file,
     )
 
 

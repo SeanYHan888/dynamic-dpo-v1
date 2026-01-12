@@ -68,6 +68,18 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature")
     parser.add_argument("--top_p", type=float, default=0.9, help="Top-p nucleus sampling")
     parser.add_argument("--max_instances", type=int, default=None, help="Limit number of prompts")
+    parser.add_argument(
+        "--dataset_repo",
+        type=str,
+        default="tatsu-lab/alpaca_eval",
+        help="HuggingFace dataset repo ID",
+    )
+    parser.add_argument(
+        "--data_file",
+        type=str,
+        default=None,
+        help="Local dataset file path (JSON/JSONL/Parquet)",
+    )
 
     args = parser.parse_args()
 
@@ -102,9 +114,13 @@ def main() -> None:
             str(args.temperature),
             "--top_p",
             str(args.top_p),
+            "--dataset_repo",
+            args.dataset_repo,
         ]
         if args.max_instances is not None:
             cmd.extend(["--max_instances", str(args.max_instances)])
+        if args.data_file:
+            cmd.extend(["--data_file", args.data_file])
         _run(cmd)
     elif not outputs_file.exists():
         raise FileNotFoundError(
