@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from util import LLAMA3_CHAT_TEMPLATE, parse_hh_to_messages
 
 ASSISTANT_TAG = "\n\nAssistant:"
+LLAMA3_ASSISTANT_HEADER = "<|start_header_id|>assistant<|end_header_id|>\n\n"
 
 # delete the \n at the beginning of the response
 def strip_one_leading_newline(s): 
@@ -171,6 +172,17 @@ def _ensure_chat_template(tokenizer: Any) -> None:
         tokenizer.chat_template = LLAMA3_CHAT_TEMPLATE
 
 
+def _ensure_generation_prompt(prompt_text: str, tokenizer: Any) -> str:
+    trimmed = prompt_text.rstrip()
+    if trimmed.endswith(LLAMA3_ASSISTANT_HEADER.rstrip()):
+        return prompt_text
+    # Some tokenizer versions ignore add_generation_prompt; patch in Llama3 header.
+    template = getattr(tokenizer, "chat_template", "") or ""
+    if "<|start_header_id|>" in prompt_text or "start_header_id" in template:
+        return f"{prompt_text}{LLAMA3_ASSISTANT_HEADER}"
+    return prompt_text
+
+
 def _render_response_with_chat_template(
     messages: List[Dict[str, str]],
     response: str,
@@ -212,6 +224,7 @@ def apply_chat_template_to_dataset(ds: Dataset, tokenizer: Any) -> Dataset:
         )
         if not prompt_rendered:
             continue
+        prompt_rendered = _ensure_generation_prompt(prompt_rendered, tokenizer)
 
         chosen_rendered = _render_response_with_chat_template(
             messages, str(chosen_text), tokenizer=tokenizer, prompt_text=prompt_rendered
