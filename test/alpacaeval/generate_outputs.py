@@ -75,13 +75,22 @@ def load_alpacaeval_dataset(
     return _load_dataset_from_file(resolved_file)
 
 
-def _format_prompt(tokenizer: AutoTokenizer, instruction: str) -> str:
+def _format_prompt(
+    tokenizer: AutoTokenizer, instruction: str, apply_chat_template: bool
+) -> str:
     """Format the prompt according to the tokenizer's chat template if available."""
-    if getattr(tokenizer, "apply_chat_template", None) and tokenizer.chat_template:
+    if (
+        apply_chat_template
+        and getattr(tokenizer, "apply_chat_template", None)
+        and tokenizer.chat_template
+    ):
         messages = [{"role": "user", "content": instruction}]
         return tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
+    if not apply_chat_template:
+        bos_token = tokenizer.bos_token or ""
+        return f"{bos_token}{instruction}"
     return (
         "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n"
         f"{instruction}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
@@ -177,6 +186,7 @@ def generate_model_outputs(
     seed: int | None = 42,
     dataset_repo: str = "tatsu-lab/alpaca_eval",
     data_file: str | None = None,
+    apply_chat_template: bool = True,
 ) -> None:
     """Generate outputs for AlpacaEval prompts using the specified model."""
     resolved_device = _resolve_device(device)
@@ -186,6 +196,7 @@ def generate_model_outputs(
         set_seed(seed)
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    tokenizer.padding_side = "left"
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -214,7 +225,10 @@ def generate_model_outputs(
     progress = tqdm(total=len(dataset), desc="Generating", unit="examples")
     for batch in _batched(dataset, batch_size):
         instructions = [item["instruction"] for item in batch]
-        prompts = [_format_prompt(tokenizer, inst) for inst in instructions]
+        prompts = [
+            _format_prompt(tokenizer, inst, apply_chat_template)
+            for inst in instructions
+        ]
 
         inputs = tokenizer(
             prompts,
@@ -225,6 +239,12 @@ def generate_model_outputs(
         )
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
         input_lengths = inputs["attention_mask"].sum(dim=1).tolist()
+        # With left padding, slice off the full padded prompt to avoid leaking it.
+        padded_input_length = (
+            inputs["input_ids"].shape[1]
+            if tokenizer.padding_side == "left"
+            else None
+        )
 
         gen_kwargs = {
             "max_new_tokens": max_new_tokens,
@@ -241,7 +261,11 @@ def generate_model_outputs(
             generated = model.generate(**inputs, **gen_kwargs)
 
         for idx, item in enumerate(batch):
-            output_ids = generated[idx][input_lengths[idx] :]
+            if padded_input_length is not None:
+                prompt_length = padded_input_length
+            else:
+                prompt_length = input_lengths[idx]
+            output_ids = generated[idx][prompt_length:]
             text = tokenizer.decode(output_ids, skip_special_tokens=False).strip()
             outputs.append(
                 {
@@ -330,6 +354,12 @@ def main() -> None:
         help="Local dataset file path (JSON/JSONL/Parquet)",
     )
     parser.add_argument(
+        "--apply_chat_template",
+        type=lambda value: str(value).lower() in {"1", "true", "yes", "y"},
+        default=True,
+        help="Whether to apply the tokenizer chat template (true/false).",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -350,6 +380,7 @@ def main() -> None:
         seed=args.seed,
         dataset_repo=args.dataset_repo,
         data_file=args.data_file,
+        apply_chat_template=args.apply_chat_template,
     )
 
 
