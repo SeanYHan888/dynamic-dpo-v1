@@ -18,6 +18,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 
 def _load_dataset_from_file(data_file: str) -> List[dict]:
+    """load dataset from a local JSON/JSONL/Parquet file. Using datasets library."""
     suffix = Path(data_file).suffix.lower()
     if suffix in {".json", ".jsonl"}:
         dataset = load_dataset("json", data_files=data_file)
@@ -31,6 +32,7 @@ def _load_dataset_from_file(data_file: str) -> List[dict]:
 
 
 def _select_dataset_file(repo_id: str) -> str:
+    """Select the most appropriate dataset file from the AlpacaEval dataset repo."""
     api = HfApi()
     try:
         files = api.list_repo_files(repo_id=repo_id, repo_type="dataset")
@@ -74,6 +76,7 @@ def load_alpacaeval_dataset(
 
 
 def _format_prompt(tokenizer: AutoTokenizer, instruction: str) -> str:
+    """Format the prompt according to the tokenizer's chat template if available."""
     if getattr(tokenizer, "apply_chat_template", None) and tokenizer.chat_template:
         messages = [{"role": "user", "content": instruction}]
         return tokenizer.apply_chat_template(
@@ -108,6 +111,49 @@ def _batched(iterable: List[dict], batch_size: int) -> Iterable[List[dict]]:
         yield iterable[i : i + batch_size]
 
 
+def _lookup_token_id(tokenizer: AutoTokenizer, token: str) -> int | None:
+    vocab = tokenizer.get_vocab()
+    if token in vocab:
+        return vocab[token]
+    added_vocab = tokenizer.get_added_vocab()
+    if token in added_vocab:
+        return added_vocab[token]
+    if token in tokenizer.all_special_tokens:
+        return tokenizer.convert_tokens_to_ids(token)
+    return None
+
+
+def _resolve_eos_token_id(tokenizer: AutoTokenizer) -> int | list[int] | None:
+    eos_token_ids: list[int] = []
+    if tokenizer.eos_token_id is not None:
+        eos_token_ids.append(tokenizer.eos_token_id)
+
+    special_map = tokenizer.special_tokens_map or {}
+    special_tokens: list[str] = []
+    if "eot_token" in special_map:
+        special_tokens.append(special_map["eot_token"])
+    additional = special_map.get("additional_special_tokens")
+    if additional:
+        special_tokens.extend(additional)
+
+    for token in special_tokens:
+        token_id = _lookup_token_id(tokenizer, token)
+        if token_id is not None and token_id not in eos_token_ids:
+            eos_token_ids.append(token_id)
+
+    if not eos_token_ids:
+        fallback_token = "<|eot_id|>"
+        token_id = _lookup_token_id(tokenizer, fallback_token)
+        if token_id is not None:
+            eos_token_ids.append(token_id)
+
+    if not eos_token_ids:
+        return None
+    if len(eos_token_ids) == 1:
+        return eos_token_ids[0]
+    return eos_token_ids
+
+
 def generate_model_outputs(
     model_name: str,
     output_file: str,
@@ -132,6 +178,8 @@ def generate_model_outputs(
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
+
+    eos_token_id = _resolve_eos_token_id(tokenizer)
 
     model_kwargs = {
         "torch_dtype": dtype,
@@ -172,8 +220,9 @@ def generate_model_outputs(
             "max_new_tokens": max_new_tokens,
             "do_sample": do_sample,
             "pad_token_id": tokenizer.pad_token_id,
-            "eos_token_id": tokenizer.eos_token_id,
         }
+        if eos_token_id is not None:
+            gen_kwargs["eos_token_id"] = eos_token_id
         if do_sample:
             gen_kwargs["temperature"] = temperature
             gen_kwargs["top_p"] = top_p
@@ -183,7 +232,7 @@ def generate_model_outputs(
 
         for idx, item in enumerate(batch):
             output_ids = generated[idx][input_lengths[idx] :]
-            text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()
+            text = tokenizer.decode(output_ids, skip_special_tokens=False).strip()
             outputs.append(
                 {
                     "instruction": item["instruction"],
@@ -224,7 +273,7 @@ def main() -> None:
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=1,
+        default=5,
         help="Batch size for inference",
     )
     parser.add_argument(
