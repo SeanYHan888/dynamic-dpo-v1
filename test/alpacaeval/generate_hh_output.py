@@ -1,5 +1,5 @@
 """
-Generate model outputs for AlpacaEval 2.0 evaluation.
+Generate model outputs for the HH dataset (single-turn prompts only).
 """
 
 from __future__ import annotations
@@ -7,78 +7,68 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
+import re
 from typing import Iterable, List
 
 import torch
 from datasets import load_dataset
-from huggingface_hub import HfApi, hf_hub_download
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
-
-def _load_dataset_from_file(data_file: str) -> List[dict]:
-    """load dataset from a local JSON/JSONL/Parquet file. Using datasets library."""
-    suffix = Path(data_file).suffix.lower()
-    if suffix in {".json", ".jsonl"}:
-        dataset = load_dataset("json", data_files=data_file)
-    elif suffix == ".parquet":
-        dataset = load_dataset("parquet", data_files=data_file)
-    else:
-        raise ValueError(f"Unsupported data file format: {data_file}")
-
-    split = "train" if "train" in dataset else next(iter(dataset.keys()))
-    return list(dataset[split])
+TAG_RE = re.compile(r"\n\n(Human|Assistant): ?")
 
 
-def _select_dataset_file(repo_id: str) -> str:
-    """Select the most appropriate dataset file from the AlpacaEval dataset repo."""
-    api = HfApi()
-    try:
-        files = api.list_repo_files(repo_id=repo_id, repo_type="dataset")
-    except Exception as exc:
-        raise RuntimeError(
-            "Failed to list AlpacaEval dataset files. "
-            "Pass --data_file with a local path."
-        ) from exc
-
-    candidates = [
-        file
-        for file in files
-        if file.lower().endswith((".json", ".jsonl", ".parquet"))
-    ]
-    if not candidates:
-        raise RuntimeError(
-            "No JSON/Parquet files found in the AlpacaEval dataset repo."
-        )
-
-    preferred = []
-    for file in candidates:
-        lowered = file.lower()
-        if "alpaca_eval" in lowered and "annotation" not in lowered and "leaderboard" not in lowered:
-            preferred.append(file)
-
-    return sorted(preferred or candidates)[0]
+def _strip_one_leading_newline(text: str) -> str:
+    return text[1:] if text.startswith("\n") else text
 
 
-def load_alpacaeval_dataset(
-    repo_id: str = "tatsu-lab/alpaca_eval",
-    data_file: str | None = None,
-) -> List[dict]:
-    """Load the AlpacaEval evaluation data without dataset scripts."""
-    resolved_file = data_file or os.getenv("ALPACAEVAL_DATA_FILE")
-    if resolved_file is None:
-        filename = _select_dataset_file(repo_id)
-        resolved_file = hf_hub_download(
-            repo_id=repo_id, repo_type="dataset", filename=filename
-        )
-    return _load_dataset_from_file(resolved_file)
+def _parse_hh_to_messages(text: str) -> list[dict]:
+    text = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    if not text.startswith("\n\nHuman:") and not text.startswith("\n\nAssistant:"):
+        text = "\n\n" + text
+
+    parts = TAG_RE.split(text)
+    messages = []
+    for i in range(1, len(parts), 2):
+        role_tag = parts[i]
+        content = parts[i + 1] if i + 1 < len(parts) else ""
+        content = _strip_one_leading_newline(content).strip()
+        if not content:
+            continue
+        role = "user" if role_tag == "Human" else "assistant"
+        messages.append({"role": role, "content": content})
+    return messages
+
+
+def _extract_single_turn_instruction(text: str) -> str | None:
+    messages = _parse_hh_to_messages(text)
+    if len(messages) != 2:
+        return None
+    if messages[0]["role"] != "user" or messages[1]["role"] != "assistant":
+        return None
+    return messages[0]["content"]
+
+
+def load_hh_single_turn_instructions(
+    repo_id: str = "Anthropic/hh-rlhf",
+    split: str = "test",
+) -> List[str]:
+    dataset = load_dataset(repo_id, split=split)
+    instructions: list[str] = []
+    for row in dataset:
+        text = row.get("chosen") or row.get("prompt") or row.get("text")
+        if text is None:
+            continue
+        instruction = _extract_single_turn_instruction(text)
+        if instruction is None:
+            continue
+        instructions.append(instruction)
+    return instructions
 
 
 def _format_prompt(
     tokenizer: AutoTokenizer, instruction: str, apply_chat_template: bool
 ) -> str:
-    """Format the prompt according to the tokenizer's chat template if available."""
     if (
         apply_chat_template
         and getattr(tokenizer, "apply_chat_template", None)
@@ -115,7 +105,7 @@ def _resolve_device(device: str) -> str:
     return "cpu"
 
 
-def _batched(iterable: List[dict], batch_size: int) -> Iterable[List[dict]]:
+def _batched(iterable: List[str], batch_size: int) -> Iterable[List[str]]:
     for i in range(0, len(iterable), batch_size):
         yield iterable[i : i + batch_size]
 
@@ -179,16 +169,15 @@ def generate_model_outputs(
     max_new_tokens: int = 512,
     batch_size: int = 1,
     device: str = "cuda",
-    temperature: float = 0.8,
+    temperature: float = 0.7,
     top_p: float = 0.9,
     max_input_tokens: int = 2048,
     max_instances: int | None = None,
     seed: int | None = 42,
-    dataset_repo: str = "tatsu-lab/alpaca_eval",
-    data_file: str | None = None,
+    dataset_repo: str = "Anthropic/hh-rlhf",
+    dataset_split: str = "test",
     apply_chat_template: bool = True,
 ) -> None:
-    """Generate outputs for AlpacaEval prompts using the specified model."""
     resolved_device = _resolve_device(device)
     dtype = _resolve_dtype(resolved_device)
 
@@ -202,9 +191,7 @@ def generate_model_outputs(
 
     eos_token_id = _resolve_eos_token_id(tokenizer)
 
-    model_kwargs = {
-        "torch_dtype": dtype,
-    }
+    model_kwargs = {"torch_dtype": dtype}
     if resolved_device == "cuda":
         model_kwargs["device_map"] = "auto"
 
@@ -213,21 +200,22 @@ def generate_model_outputs(
         model = model.to(resolved_device)
     model.eval()
 
-    dataset = load_alpacaeval_dataset(repo_id=dataset_repo, data_file=data_file)
+    instructions = load_hh_single_turn_instructions(
+        repo_id=dataset_repo, split=dataset_split
+    )
     if max_instances is not None:
-        dataset = dataset[:max_instances]
+        instructions = instructions[:max_instances]
 
     outputs = []
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     do_sample = temperature > 0
 
-    progress = tqdm(total=len(dataset), desc="Generating", unit="examples")
-    for batch in _batched(dataset, batch_size):
-        instructions = [item["instruction"] for item in batch]
+    progress = tqdm(total=len(instructions), desc="Generating", unit="examples")
+    for batch in _batched(instructions, batch_size):
         prompts = [
-            _format_prompt(tokenizer, inst, apply_chat_template)
-            for inst in instructions
+            _format_prompt(tokenizer, instruction, apply_chat_template)
+            for instruction in batch
         ]
 
         inputs = tokenizer(
@@ -239,7 +227,6 @@ def generate_model_outputs(
         )
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
         input_lengths = inputs["attention_mask"].sum(dim=1).tolist()
-        # With left padding, slice off the full padded prompt to avoid leaking it.
         padded_input_length = (
             inputs["input_ids"].shape[1]
             if tokenizer.padding_side == "left"
@@ -260,7 +247,7 @@ def generate_model_outputs(
         with torch.inference_mode():
             generated = model.generate(**inputs, **gen_kwargs)
 
-        for idx, item in enumerate(batch):
+        for idx, instruction in enumerate(batch):
             if padded_input_length is not None:
                 prompt_length = padded_input_length
             else:
@@ -269,7 +256,7 @@ def generate_model_outputs(
             text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()
             outputs.append(
                 {
-                    "instruction": item["instruction"],
+                    "instruction": instruction,
                     "output": text,
                     "generator": model_name,
                 }
@@ -285,7 +272,9 @@ def generate_model_outputs(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate AlpacaEval outputs")
+    parser = argparse.ArgumentParser(
+        description="Generate outputs for HH single-turn prompts"
+    )
     parser.add_argument(
         "--model_name",
         type=str,
@@ -295,7 +284,7 @@ def main() -> None:
     parser.add_argument(
         "--output_file",
         type=str,
-        default="test/alpacaeval/outputs/model_outputs.json",
+        default="test/alpacaeval/outputs/hh_model_outputs.json",
         help="Path to save the outputs",
     )
     parser.add_argument(
@@ -339,19 +328,19 @@ def main() -> None:
         "--max_instances",
         type=int,
         default=None,
-        help="Limit the number of AlpacaEval prompts",
+        help="Limit the number of HH prompts after filtering",
     )
     parser.add_argument(
         "--dataset_repo",
         type=str,
-        default="tatsu-lab/alpaca_eval",
+        default="Anthropic/hh-rlhf",
         help="HuggingFace dataset repo ID",
     )
     parser.add_argument(
-        "--data_file",
+        "--dataset_split",
         type=str,
-        default=None,
-        help="Local dataset file path (JSON/JSONL/Parquet)",
+        default="test",
+        help="Dataset split to use",
     )
     parser.add_argument(
         "--apply_chat_template",
@@ -379,7 +368,7 @@ def main() -> None:
         max_instances=args.max_instances,
         seed=args.seed,
         dataset_repo=args.dataset_repo,
-        data_file=args.data_file,
+        dataset_split=args.dataset_split,
         apply_chat_template=args.apply_chat_template,
     )
 

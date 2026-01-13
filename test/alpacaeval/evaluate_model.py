@@ -32,6 +32,22 @@ def _tokenize(value: str) -> list[str]:
     return [part for part in re.split(r"[^a-z0-9]+", value.lower()) if part]
 
 
+def _sanitize_generators(outputs_df):
+    for column in ("generator", "generator_1", "generator_2"):
+        if column in outputs_df.columns:
+            outputs_df[column] = outputs_df[column].apply(
+                lambda value: re.sub(r"[\\\\/]+", "_", str(value))
+            )
+    return outputs_df
+
+
+def _load_and_sanitize_outputs(path: str | Path):
+    from alpaca_eval import utils as alpaca_utils
+
+    outputs_df = alpaca_utils.load_or_convert_to_dataframe(path)
+    return _sanitize_generators(outputs_df)
+
+
 def _select_reference_file(repo_id: str, alias: str) -> str:
     api = HfApi()
     files = api.list_repo_files(repo_id=repo_id, repo_type="dataset")
@@ -199,26 +215,24 @@ def main() -> None:
             print("OPENAI_API_KEY not set. Skipping AlpacaEval.")
             return
 
+        from alpaca_eval import main as alpaca_main
+
         reference_outputs = _resolve_reference_outputs(
             args.reference_outputs, args.reference_repo
         )
+        model_outputs_df = _load_and_sanitize_outputs(outputs_file)
+        reference_outputs_df = _load_and_sanitize_outputs(reference_outputs)
+        weights_dir = outputs_dir / "weights"
 
-        cmd = [
-            "alpaca_eval",
-            "--model_outputs",
-            str(outputs_file),
-            "--annotators_config",
-            args.annotators_config,
-            "--reference_outputs",
-            reference_outputs,
-            "--output_path",
-            str(results_dir),
-            "--name",
-            leaderboard_name,
-        ]
-        if args.max_instances is not None:
-            cmd.extend(["--max_instances", str(args.max_instances)])
-        _run(cmd)
+        alpaca_main.evaluate(
+            model_outputs=model_outputs_df,
+            reference_outputs=reference_outputs_df,
+            annotators_config=args.annotators_config,
+            output_path=str(results_dir),
+            name=leaderboard_name,
+            max_instances=args.max_instances,
+            metric_kwargs={"save_weights_dir": str(weights_dir)},
+        )
 
     if not args.skip_analysis:
         cmd = [
