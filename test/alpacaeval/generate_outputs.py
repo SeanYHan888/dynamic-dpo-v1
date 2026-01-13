@@ -127,24 +127,34 @@ def _resolve_eos_token_id(tokenizer: AutoTokenizer) -> int | list[int] | None:
     eos_token_ids: list[int] = []
     if tokenizer.eos_token_id is not None:
         eos_token_ids.append(tokenizer.eos_token_id)
+    elif tokenizer.eos_token:
+        token_id = _lookup_token_id(tokenizer, tokenizer.eos_token)
+        if token_id is not None:
+            eos_token_ids.append(token_id)
 
     special_map = tokenizer.special_tokens_map or {}
-    special_tokens: list[str] = []
+    eot_tokens: list[str] = []
     if "eot_token" in special_map:
-        special_tokens.append(special_map["eot_token"])
-    additional = special_map.get("additional_special_tokens")
-    if additional:
-        special_tokens.extend(additional)
+        eot_tokens.append(special_map["eot_token"])
+    additional = special_map.get("additional_special_tokens") or []
+    for token in additional:
+        lowered = token.lower()
+        if "eot" in lowered or "end_of_turn" in lowered:
+            eot_tokens.append(token)
+    for token in tokenizer.all_special_tokens:
+        lowered = token.lower()
+        if "eot" in lowered or "end_of_turn" in lowered:
+            eot_tokens.append(token)
 
-    for token in special_tokens:
+    for token in dict.fromkeys(eot_tokens):
         token_id = _lookup_token_id(tokenizer, token)
         if token_id is not None and token_id not in eos_token_ids:
             eos_token_ids.append(token_id)
 
-    if not eos_token_ids:
+    if not eot_tokens:
         fallback_token = "<|eot_id|>"
         token_id = _lookup_token_id(tokenizer, fallback_token)
-        if token_id is not None:
+        if token_id is not None and token_id not in eos_token_ids:
             eos_token_ids.append(token_id)
 
     if not eos_token_ids:
