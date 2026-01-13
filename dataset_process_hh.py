@@ -204,6 +204,8 @@ def apply_chat_template_to_dataset(ds: Dataset, tokenizer: Any) -> Dataset:
             continue
 
         messages = parse_hh_to_messages(prompt_text)
+        if not messages and prompt_text:
+            messages = [{"role": "user", "content": prompt_text}]
         if not messages or messages[-1]["role"] != "user":
             continue
 
@@ -229,7 +231,8 @@ def apply_chat_template_to_dataset(ds: Dataset, tokenizer: Any) -> Dataset:
                 "rejected": rejected_rendered,
             }
         )
-    return Dataset.from_list(rows)
+    features = getattr(ds, "features", None)
+    return Dataset.from_list(rows, features=features)
 
 
 
