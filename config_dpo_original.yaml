@@ -3,9 +3,9 @@ ref_name: W-61/hh-llama32-1b-sft
 precision: bf16
 
 dataset:
-  dataset_name: Anthropic/hh-rlhf
-  generated_data: false
-  chat_template: false
+  dataset_name: jackf857/hh-llama32-1b-rollout-judged
+  generated_data: true
+  chat_template: true
   subset: train[:30%]
   val_ratio: 0.1
   seed: 42
