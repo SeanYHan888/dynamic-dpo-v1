@@ -1,50 +1,50 @@
 # Model-Judge Evaluation (GPT-4 Oracle)
 
-This folder contains a lightweight pipeline to evaluate SFT vs. DPO variants on TLDR using GPT-4 as an external judge. The workflow is driven by `test/model_judge/config_evaluation.yaml`.
+This folder contains a lightweight pipeline to evaluate SFT vs. DPO variants on TLDR using GPT-4 as an external judge. The workflow is driven by `test/gpt_judge/config_evaluation.yaml`.
 
 ## Quick Start
 
 1) Prepare the evaluation set:
 ```bash
-python test/model_judge/data_process_tldr.py \
-  --config test/model_judge/config_evaluation.yaml
+python test/gpt_judge/data_process_tldr.py \
+  --config test/gpt_judge/config_evaluation.yaml
 ```
 
 2) Generate summaries from all models:
 ```bash
-python test/model_judge/generate_summaries.py \
-  --config test/model_judge/config_evaluation.yaml \
-  --eval_data test/model_judge/data/tldr_eval_set.json
+python test/gpt_judge/generate_summaries.py \
+  --config test/gpt_judge/config_evaluation.yaml \
+  --eval_data test/gpt_judge/data/tldr_eval_set.json
 ```
 
 3) Run GPT-4 oracle comparisons (repeat for each comparison):
 ```bash
 export OPENAI_API_KEY=...
 
-python test/model_judge/gpt4_oracle.py \
-  --config test/model_judge/config_evaluation.yaml \
-  --summaries test/model_judge/outputs/all_summaries.json \
+python test/gpt_judge/gpt4_oracle.py \
+  --config test/gpt_judge/config_evaluation.yaml \
+  --summaries test/gpt_judge/outputs/all_summaries.json \
   --comparison sft_vs_standard_dpo
 ```
 
 4) Analyze results and generate plots:
 ```bash
-python test/model_judge/analyze_results.py \
-  --config test/model_judge/config_evaluation.yaml
+python test/gpt_judge/analyze_results.py \
+  --config test/gpt_judge/config_evaluation.yaml
 
-python test/model_judge/visualize_results.py \
-  --config test/model_judge/config_evaluation.yaml
+python test/gpt_judge/visualize_results.py \
+  --config test/gpt_judge/config_evaluation.yaml
 ```
 
 Optional qualitative sample report:
 ```bash
-python test/model_judge/qualitative_analysis.py \
-  --config test/model_judge/config_evaluation.yaml
+python test/gpt_judge/qualitative_analysis.py \
+  --config test/gpt_judge/config_evaluation.yaml
 ```
 
 ## Configuration Notes
 
-Edit `test/model_judge/config_evaluation.yaml` for:
+Edit `test/gpt_judge/config_evaluation.yaml` for:
 - Dataset settings (`dataset.*`): name, split, max_samples, and field overrides.
 - Model paths (`models.*`): set local or HF model IDs.
 - Generation parameters (`generation.*`): max tokens, sampling, batch size, device.
@@ -62,10 +62,10 @@ models:
 ## Outputs
 
 Generated artifacts are written under:
-- `test/model_judge/data/` for the evaluation dataset
-- `test/model_judge/outputs/` for model summaries
-- `test/model_judge/results/` for GPT-4 judgments and reports
-- `test/model_judge/visualizations/` for charts
+- `test/gpt_judge/data/` for the evaluation dataset
+- `test/gpt_judge/outputs/` for model summaries
+- `test/gpt_judge/results/` for GPT-4 judgments and reports
+- `test/gpt_judge/visualizations/` for charts
 
 These directories are ignored in `.gitignore`.
 

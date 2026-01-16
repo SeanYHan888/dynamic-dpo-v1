@@ -61,7 +61,7 @@ gpt4_oracle:
 
 # Output Paths
 output:
-  data_dir: "test/model_judge/data"
-  summaries_dir: "test/model_judge/outputs"
-  results_dir: "test/model_judge/results"
-  visualizations_dir: "test/model_judge/visualizations"
+  data_dir: "test/gpt_judge/data"
+  summaries_dir: "test/gpt_judge/outputs"
+  results_dir: "test/gpt_judge/results"
+  visualizations_dir: "test/gpt_judge/visualizations"

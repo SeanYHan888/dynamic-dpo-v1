@@ -266,7 +266,7 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=str,
-        default="test/model_judge/config_evaluation.yaml",
+        default="test/gpt_judge/config_evaluation.yaml",
         help="Path to evaluation config YAML",
     )
     parser.add_argument(
@@ -298,7 +298,7 @@ def main() -> None:
     model_configs = config.get("models", {})
     output_cfg = config.get("output", {})
     output_path = args.output or str(
-        Path(output_cfg.get("summaries_dir", "test/model_judge/outputs"))
+        Path(output_cfg.get("summaries_dir", "test/gpt_judge/outputs"))
         / "all_summaries.json"
     )
 
