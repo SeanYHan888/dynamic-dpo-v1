@@ -129,7 +129,7 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=str,
-        default="test/gpt_judge/config_evaluation.yaml",
+        default="test/gpt_judge_TLDR/config_evaluation.yaml",
         help="Path to evaluation config YAML",
     )
     parser.add_argument(
@@ -144,7 +144,7 @@ def main() -> None:
     dataset_cfg = config.get("dataset", {})
     output_cfg = config.get("output", {})
     output_path = args.output or str(
-        Path(output_cfg.get("data_dir", "test/gpt_judge/data"))
+        Path(output_cfg.get("data_dir", "test/gpt_judge_TLDR/data"))
         / "tldr_eval_set.json"
     )
 

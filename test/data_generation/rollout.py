@@ -1,4 +1,5 @@
 from __future__ import annotations
+import tokenize
 
 import random
 from typing import Iterable, List, Tuple
