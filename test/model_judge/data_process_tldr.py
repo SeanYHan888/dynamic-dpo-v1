@@ -38,6 +38,17 @@ def _resolve_field(
     )
 
 
+def _resolve_optional_field(
+    value: str | None, candidates: list[str], available: list[str]
+) -> str | None:
+    if value:
+        return value if value in available else None
+    for candidate in candidates:
+        if candidate in available:
+            return candidate
+    return None
+
+
 def _word_count(text: str) -> int:
     return len(text.split())
 
@@ -79,11 +90,10 @@ def load_tldr_test_set(
         available,
         "summary_field",
     )
-    id_key = _resolve_field(
+    id_key = _resolve_optional_field(
         id_field,
         ["post_id", "id", "reddit_id"],
         available,
-        "id_field",
     )
 
     if max_samples and max_samples > 0 and max_samples < len(dataset):
@@ -92,9 +102,9 @@ def load_tldr_test_set(
     rows: list[dict[str, Any]] = []
     meta_fields = meta_fields or []
 
-    for row in dataset:
+    for idx, row in enumerate(dataset):
         record = {
-            "post_id": str(row.get(id_key, "")),
+            "post_id": str(row.get(id_key, idx)) if id_key else str(idx),
             "post": row.get(post_key, ""),
             "reference_summary": row.get(summary_key, ""),
         }
