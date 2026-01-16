@@ -8,3 +8,4 @@ wheels/
 /docs
 # Virtual environments
 .venv
+test/alpacaeval/outputs/
