@@ -141,6 +141,8 @@ class RMJudge(BaseJudge):
                 outputs = self.model(**inputs)
                 logits = outputs.logits
                 batch_scores = logits.squeeze(-1).detach().float().cpu().tolist()
+                if not isinstance(batch_scores, list):
+                    batch_scores = [batch_scores]
                 scores.extend(batch_scores)
         return scores
 
