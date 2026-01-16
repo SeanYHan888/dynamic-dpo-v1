@@ -5,7 +5,35 @@ build/
 dist/
 wheels/
 *.egg-info
-/docs
+
+# Tool caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.cache/
+.ipynb_checkpoints/
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
+
 # Virtual environments
+.venv/
 .venv
-test/alpacaeval/outputs/
+.env
+.env.*
+
+# Experiment outputs
+logs/
+rollout_output/
+dpo_model/
+sft_model/
+trl_dynamic_beta_out/
+wandb/
+
+# Model-judge outputs
+test/model_judge/data/
+test/model_judge/outputs/
+test/model_judge/results/
+test/model_judge/visualizations/
