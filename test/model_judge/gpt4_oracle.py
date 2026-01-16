@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from tqdm import tqdm
 
 try:
     from openai import OpenAI
@@ -147,7 +148,7 @@ def evaluate_comparison(
     if max_examples is not None:
         pending = pending[:max_examples]
 
-    for idx, row in enumerate(pending, start=1):
+    for idx, row in enumerate(tqdm(pending, desc="GPT-4 eval"), start=1):
         post = row.get("post", "")
         metadata = row.get("metadata")
         summary_a = row.get(sft_summary_key)
