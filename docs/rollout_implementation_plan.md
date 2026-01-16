@@ -120,7 +120,7 @@ class BaseJudge:
 2. **`src/generation/rollout.py`**:
     * `class RolloutGenerator`: `generate_batch(prompts)`
     * `class PairSelector`: Judge implementation.
-3. **`src/data_generation/run_rollout.py`**:
+3. **`test/data_generation/run_rollout.py`**:
     * Main entry point.
     * Load model/tokenizer (reuse `train_sft.py` logic).
     * Load HH dataset (raw text).
@@ -137,4 +137,4 @@ class BaseJudge:
 1. **Template Verification**: Confirm `prompt_text` ends with `<|start_header_id|>assistant<|end_header_id|>\n\n` and lacks raw role headers.
 2. **Stop Token Check**: Generate 10 samples; ensure 0% contain `\n\nHuman:`. Adjust `stopping_criteria` if needed.
 3. **Length Check**: Verify `prompt_input_ids` aren't truncated by `model_max_length`.
-4. **Integration Test**: Run `python -m src.data_generation.run_rollout --limit 10`, load output with `load_dataset`, and pass to DPO collator.
+4. **Integration Test**: Run `python -m test.data_generation.run_rollout --limit 10`, load output with `load_dataset`, and pass to DPO collator.

@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 - Core training scripts live at `training.py` (dynamic-beta DPO), `train_sft.py` (SFT reference), and `risk_dpo_trainer.py`/`dpo_loss.py` (custom trainer + loss). Helper math lives in `quantile_compute.py`.
 - Dataset prep is in `dataset_process_hh.py`: HH parsing via `build_HH_dataset`, plus generated-rollout loaders (`load_generated_dataset_from_config`) that map judged JSONL into `{prompt, chosen, rejected}`.
-- Data utilities for Anthropic HH parsing and rollout generation are under `src/data_generation/` (`run_rollout.py`, `rollout.py`, `hh_parser.py`, `utils.py`).
+- Data utilities for Anthropic HH parsing and rollout generation are under `test/data_generation/` (`run_rollout.py`, `rollout.py`, `hh_parser.py`, `utils.py`).
 - Configuration is centralized in `config_dpo.yaml`; adjust datasets, precision, logging, and rollout knobs here. Plans and notes reside in `docs/`. Shell automation for RunPod is in `run_and_shutdown.sh`.
 
 ## Setup & Dependencies
@@ -13,7 +13,7 @@
 ## Build, Train, and Data Generation Commands
 - SFT reference model: `python train_sft.py --config config_dpo.yaml` (uses `LLAMA3_CHAT_TEMPLATE` + `SFTTrainer`; tune `sft_training` in the config).
 - Dynamic-beta DPO: `python training.py --config config_dpo.yaml` (uses `dataset.generated_data` to pick `build_HH_dataset` vs `load_generated_dataset_from_config`; saves to `trl_dynamic_beta_out`).
-- Rollouts for synthetic pairs: `python -m src.data_generation.run_rollout --config config_dpo.yaml --limit 50` (k candidates per prompt; JSONL under `rollout_output/`).
+- Rollouts for synthetic pairs: `python -m test.data_generation.run_rollout --config config_dpo.yaml --limit 50` (k candidates per prompt; JSONL under `rollout_output/`).
 
 ## Coding Style & Naming Conventions
 - Python, 4-space indent, type hints where practical. Prefer snake_case and config keys that mirror `config_dpo.yaml`.
