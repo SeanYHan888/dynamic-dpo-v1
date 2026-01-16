@@ -9,7 +9,7 @@ NO_AUTO_SHUT=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        rollout|sft)
+        rollout|sft|dpo)
             MODE="$1"
             ;;
         -noautoshut)
@@ -23,7 +23,7 @@ while [ $# -gt 0 ]; do
             CONFIG_PATH="$1"
             ;;
         *)
-            echo "Unknown argument: $1 (use 'rollout', 'sft', '-noautoshut', or --config <path>)"
+            echo "Unknown argument: $1 (use 'rollout', 'sft', 'dpo', '-noautoshut', or --config <path>)"
             exit 1
             ;;
     esac
@@ -43,8 +43,12 @@ elif [ "$MODE" = "sft" ]; then
     # Assuming user wants to run this unattended and likely wants to push if configured.
     yes | uv run python train_sft.py --config "$CONFIG_PATH"
     JOB_EXIT_CODE=$?
+elif [ "$MODE" = "dpo" ]; then
+    echo "Starting DPO training..."
+    uv run python training.py --config "$CONFIG_PATH"
+    JOB_EXIT_CODE=$?
 else
-    echo "Unknown mode: $MODE (use 'rollout' or 'sft')"
+    echo "Unknown mode: $MODE (use 'rollout', 'sft', or 'dpo')"
     exit 1
 fi
 
