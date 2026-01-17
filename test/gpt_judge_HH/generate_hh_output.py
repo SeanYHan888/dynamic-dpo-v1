@@ -7,15 +7,23 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
-from typing import Iterable, List
+from pathlib import Path
+from typing import Any, Iterable, List
 
 import torch
+import yaml
 from datasets import load_dataset
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 TAG_RE = re.compile(r"\n\n(Human|Assistant): ?")
+
+
+def _load_config(path: str | Path) -> dict[str, Any]:
+    with Path(path).open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or {}
 
 
 def _strip_one_leading_newline(text: str) -> str:
@@ -204,6 +212,11 @@ def generate_model_outputs(
         repo_id=dataset_repo, split=dataset_split
     )
     if max_instances is not None:
+        if seed is not None:
+            order_rng = random.Random(seed)
+            order_rng.shuffle(instructions)
+        else:
+            random.shuffle(instructions)
         instructions = instructions[:max_instances]
 
     outputs = []
@@ -278,52 +291,58 @@ def main() -> None:
         description="Generate outputs for HH single-turn prompts"
     )
     parser.add_argument(
+        "--config",
+        type=str,
+        default="test/gpt_judge_HH/config_evaluation.yaml",
+        help="Path to evaluation config YAML",
+    )
+    parser.add_argument(
         "--model_name",
         type=str,
-        default="W-61/hh-llama32-1b-sft",
+        default=None,
         help="HuggingFace model ID or local path",
     )
     parser.add_argument(
         "--output_file",
         type=str,
-        default="test/alpacaeval/outputs/hh_model_outputs.json",
+        default=None,
         help="Path to save the outputs",
     )
     parser.add_argument(
         "--max_new_tokens",
         type=int,
-        default=512,
+        default=None,
         help="Maximum number of new tokens to generate",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=1,
+        default=None,
         help="Batch size for inference",
     )
     parser.add_argument(
         "--device",
         type=str,
-        default="cuda" if torch.cuda.is_available() else "cpu",
+        default=None,
         choices=["cpu", "cuda", "mps"],
         help="Device to use for inference",
     )
     parser.add_argument(
         "--temperature",
         type=float,
-        default=0.7,
+        default=None,
         help="Sampling temperature (0 for greedy)",
     )
     parser.add_argument(
         "--top_p",
         type=float,
-        default=0.9,
+        default=None,
         help="Top-p nucleus sampling",
     )
     parser.add_argument(
         "--max_input_tokens",
         type=int,
-        default=2048,
+        default=None,
         help="Maximum input token length",
     )
     parser.add_argument(
@@ -335,43 +354,97 @@ def main() -> None:
     parser.add_argument(
         "--dataset_repo",
         type=str,
-        default="Anthropic/hh-rlhf",
+        default=None,
         help="HuggingFace dataset repo ID",
     )
     parser.add_argument(
         "--dataset_split",
         type=str,
-        default="test",
+        default=None,
         help="Dataset split to use",
     )
     parser.add_argument(
         "--apply_chat_template",
         type=lambda value: str(value).lower() in {"1", "true", "yes", "y"},
-        default=True,
+        default=None,
         help="Whether to apply the tokenizer chat template (true/false).",
     )
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
+        default=None,
         help="Random seed for generation",
     )
 
     args = parser.parse_args()
+    config = _load_config(args.config)
+    generation_cfg = config.get("generation", {})
+
+    default_device = "cuda" if torch.cuda.is_available() else "cpu"
+
     generate_model_outputs(
-        model_name=args.model_name,
-        output_file=args.output_file,
-        max_new_tokens=args.max_new_tokens,
-        batch_size=args.batch_size,
-        device=args.device,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        max_input_tokens=args.max_input_tokens,
-        max_instances=args.max_instances,
-        seed=args.seed,
-        dataset_repo=args.dataset_repo,
-        dataset_split=args.dataset_split,
-        apply_chat_template=args.apply_chat_template,
+        model_name=(
+            args.model_name
+            or generation_cfg.get("model_name", "W-61/hh-llama32-1b-sft")
+        ),
+        output_file=(
+            args.output_file
+            or generation_cfg.get(
+                "output_file", "test/alpacaeval/outputs/hh_model_outputs.json"
+            )
+        ),
+        max_new_tokens=(
+            args.max_new_tokens
+            if args.max_new_tokens is not None
+            else generation_cfg.get("max_new_tokens", 512)
+        ),
+        batch_size=(
+            args.batch_size
+            if args.batch_size is not None
+            else generation_cfg.get("batch_size", 1)
+        ),
+        device=(
+            args.device
+            or generation_cfg.get("device", default_device)
+        ),
+        temperature=(
+            args.temperature
+            if args.temperature is not None
+            else generation_cfg.get("temperature", 0.7)
+        ),
+        top_p=(
+            args.top_p
+            if args.top_p is not None
+            else generation_cfg.get("top_p", 0.9)
+        ),
+        max_input_tokens=(
+            args.max_input_tokens
+            if args.max_input_tokens is not None
+            else generation_cfg.get("max_input_tokens", 2048)
+        ),
+        max_instances=(
+            args.max_instances
+            if args.max_instances is not None
+            else generation_cfg.get("max_instances")
+        ),
+        seed=(
+            args.seed
+            if args.seed is not None
+            else generation_cfg.get("seed", 42)
+        ),
+        dataset_repo=(
+            args.dataset_repo
+            or generation_cfg.get("dataset_repo", "Anthropic/hh-rlhf")
+        ),
+        dataset_split=(
+            args.dataset_split
+            or generation_cfg.get("dataset_split", "test")
+        ),
+        apply_chat_template=(
+            args.apply_chat_template
+            if args.apply_chat_template is not None
+            else generation_cfg.get("apply_chat_template", True)
+        ),
     )
 
 

@@ -1,5 +1,5 @@
 """
-Directly judge three output files with GPT-4o using a config-driven prompt.
+Pairwise judge model outputs against HH chosen answers with GPT-4o.
 """
 
 from __future__ import annotations
@@ -21,6 +21,15 @@ try:
     from openai import OpenAI
 except ImportError as exc:
     raise RuntimeError("openai package is required to run this script.") from exc
+
+try:
+    from datasets import load_dataset
+except ImportError as exc:
+    raise RuntimeError(
+        "datasets package is required to load HH chosen answers."
+    ) from exc
+
+TAG_RE = re.compile(r"\n\n(Human|Assistant): ?")
 
 
 def _load_config(path: str | Path) -> dict[str, Any]:
@@ -58,9 +67,9 @@ def _build_prompt(
 ) -> str:
     return template.format(
         instruction=instruction,
-        output_a=labeled_outputs["A"],
-        output_b=labeled_outputs["B"],
-        output_c=labeled_outputs["C"],
+        output_a=labeled_outputs.get("A", ""),
+        output_b=labeled_outputs.get("B", ""),
+        output_c=labeled_outputs.get("C", ""),
     )
 
 
@@ -68,7 +77,7 @@ def _normalize_winner(value: str | None) -> str | None:
     if not value:
         return None
     cleaned = value.strip().strip('"').strip().upper()
-    if cleaned in {"A", "B", "C", "TIE"}:
+    if cleaned in {"A", "B", "TIE"}:
         return cleaned
     return None
 
@@ -103,45 +112,61 @@ def _parse_response(text: str) -> tuple[str | None, str | None]:
             winner = _normalize_winner(line.split(":", 1)[1])
 
     if winner is None:
-        match = re.search(r'"winner"\s*:\s*"(A|B|C|TIE)"', text, re.IGNORECASE)
+        match = re.search(r'"winner"\s*:\s*"(A|B|TIE)"', text, re.IGNORECASE)
         if match:
             winner = match.group(1).upper()
 
     if winner is None:
-        match = re.search(r"\b(A|B|C|TIE)\b", text, re.IGNORECASE)
+        match = re.search(r"\b(A|B|TIE)\b", text, re.IGNORECASE)
         if match:
             winner = match.group(1).upper()
 
     return comparison, winner
 
 
-def _init_counts() -> dict[str, int]:
-    return {"sft": 0, "og_dpo": 0, "dpo": 0, "TIE": 0}
+def _init_counts(model_keys: list[str]) -> dict[str, dict[str, int]]:
+    return {
+        key: {"wins": 0, "losses": 0, "ties": 0} for key in model_keys
+    }
 
 
-def _record_count(counts: dict[str, int], winner_key: str | None) -> None:
-    if not winner_key:
-        counts["TIE"] += 1
-        return
-    if winner_key.upper() == "TIE":
-        counts["TIE"] += 1
-        return
-    if winner_key not in counts:
-        counts[winner_key] = 0
-    counts[winner_key] += 1
+def _record_count(
+    counts: dict[str, dict[str, int]],
+    model_key: str,
+    winner_key: str | None,
+) -> None:
+    stats = counts.setdefault(model_key, {"wins": 0, "losses": 0, "ties": 0})
+    if winner_key == model_key:
+        stats["wins"] += 1
+    elif winner_key == "chosen":
+        stats["losses"] += 1
+    else:
+        stats["ties"] += 1
 
 
-def _summarize(counts: dict[str, int], total: int) -> dict[str, Any]:
-    if total == 0:
-        return {"total": 0, "counts": counts, "win_rates": {}}
-    win_rates = {key: value / total for key, value in counts.items()}
-    return {"total": total, "counts": counts, "win_rates": win_rates}
+def _summarize(counts: dict[str, dict[str, int]]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for model_key, stats in counts.items():
+        total = stats["wins"] + stats["losses"] + stats["ties"]
+        win_rate = stats["wins"] / total if total else 0.0
+        summary[model_key] = {
+            "total": total,
+            "wins": stats["wins"],
+            "losses": stats["losses"],
+            "ties": stats["ties"],
+            "win_rate": win_rate,
+        }
+    return summary
 
 
-def _seed_for_instruction(seed: int | None, instruction: str) -> int | None:
+def _seed_for_pair(
+    seed: int | None, instruction: str, model_key: str
+) -> int | None:
     if seed is None:
         return None
-    digest = hashlib.sha256(f"{seed}-{instruction}".encode("utf-8")).digest()
+    digest = hashlib.sha256(
+        f"{seed}-{model_key}-{instruction}".encode("utf-8")
+    ).digest()
     return int.from_bytes(digest[:8], "big")
 
 
@@ -192,9 +217,60 @@ def _call_gpt4_oracle(
     raise RuntimeError(f"OpenAI API failed after {max_retries} retries") from last_error
 
 
+def _strip_one_leading_newline(text: str) -> str:
+    return text[1:] if text.startswith("\n") else text
+
+
+def _parse_hh_to_messages(text: str) -> list[dict[str, str]]:
+    text = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    if not text.startswith("\n\nHuman:") and not text.startswith("\n\nAssistant:"):
+        text = "\n\n" + text
+
+    parts = TAG_RE.split(text)
+    messages: list[dict[str, str]] = []
+    for i in range(1, len(parts), 2):
+        role_tag = parts[i]
+        content = parts[i + 1] if i + 1 < len(parts) else ""
+        content = _strip_one_leading_newline(content).strip()
+        if not content:
+            continue
+        role = "user" if role_tag == "Human" else "assistant"
+        messages.append({"role": role, "content": content})
+    return messages
+
+
+def _extract_single_turn_pair(text: str) -> tuple[str, str] | None:
+    messages = _parse_hh_to_messages(text)
+    if len(messages) != 2:
+        return None
+    if messages[0]["role"] != "user" or messages[1]["role"] != "assistant":
+        return None
+    instruction = messages[0]["content"]
+    response = messages[1]["content"]
+    if not instruction or not response:
+        return None
+    return instruction, response
+
+
+def _load_hh_chosen_map(repo_id: str, split: str) -> dict[str, str]:
+    dataset = load_dataset(repo_id, split=split)
+    chosen_map: dict[str, str] = {}
+    for row in dataset:
+        text = row.get("chosen") or row.get("prompt") or row.get("text")
+        if text is None:
+            continue
+        pair = _extract_single_turn_pair(text)
+        if pair is None:
+            continue
+        instruction, chosen = pair
+        if instruction not in chosen_map:
+            chosen_map[instruction] = chosen
+    return chosen_map
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Use GPT-4o to directly judge three output files."
+        description="Use GPT-4o to judge model outputs vs HH chosen answers."
     )
     parser.add_argument(
         "--config",
@@ -253,6 +329,18 @@ def main() -> None:
         help="Override path to write the summary JSON.",
     )
     parser.add_argument(
+        "--dataset_repo",
+        type=str,
+        default=None,
+        help="HuggingFace dataset repo ID for HH chosen answers.",
+    )
+    parser.add_argument(
+        "--dataset_split",
+        type=str,
+        default=None,
+        help="Dataset split to load chosen answers from.",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Skip instructions already present in the results file.",
@@ -267,6 +355,7 @@ def main() -> None:
     oracle_cfg = config.get("gpt4_oracle", {})
     inputs_cfg = config.get("inputs", {})
     output_cfg = config.get("output", {})
+    generation_cfg = config.get("generation", {})
 
     prompt_template = oracle_cfg.get("prompt_template")
     if not prompt_template:
@@ -305,13 +394,26 @@ def main() -> None:
     sft_map = _load_outputs(Path(sft_path))
     og_dpo_map = _load_outputs(Path(og_dpo_path))
     dpo_map = _load_outputs(Path(dpo_path))
+    dataset_repo = args.dataset_repo or generation_cfg.get(
+        "dataset_repo", "Anthropic/hh-rlhf"
+    )
+    dataset_split = args.dataset_split or generation_cfg.get("dataset_split", "test")
+    chosen_map = _load_hh_chosen_map(dataset_repo, dataset_split)
 
-    instructions = _intersection_keys(sft_map, og_dpo_map, dpo_map)
+    instructions = _intersection_keys(sft_map, og_dpo_map, dpo_map, chosen_map)
     if max_examples is not None:
         instructions = instructions[:max_examples]
+    if instructions:
+        if seed is not None:
+            order_rng = random.Random(seed)
+            order_rng.shuffle(instructions)
+        else:
+            random.shuffle(instructions)
 
     seen = set()
-    counts = _init_counts()
+    model_maps = {"sft": sft_map, "og_dpo": og_dpo_map, "dpo": dpo_map}
+    model_keys = list(model_maps.keys())
+    counts = _init_counts(model_keys)
     if args.resume and results_path.exists():
         with results_path.open("r", encoding="utf-8") as f:
             for line in f:
@@ -323,36 +425,50 @@ def main() -> None:
                 except json.JSONDecodeError:
                     continue
                 instruction = row.get("instruction")
-                if not instruction or instruction in seen:
+                model_key = row.get("model_key")
+                if not instruction or not model_key:
                     continue
-                seen.add(instruction)
+                pair_key = (instruction, model_key)
+                if pair_key in seen:
+                    continue
+                seen.add(pair_key)
                 winner_key = row.get("winner_key") or row.get("winner")
-                _record_count(counts, winner_key)
+                _record_count(counts, model_key, winner_key)
 
     client = OpenAI()
 
     results_path.parent.mkdir(parents=True, exist_ok=True)
-    total = sum(counts.values())
+    total = sum(
+        stats["wins"] + stats["losses"] + stats["ties"]
+        for stats in counts.values()
+    )
+    pending_pairs = [
+        (instruction, model_key)
+        for instruction in instructions
+        for model_key in model_keys
+        if (instruction, model_key) not in seen
+    ]
 
     with results_path.open("a", encoding="utf-8") as out_f:
-        for instruction in tqdm(instructions, desc="Judging", unit="examples"):
+        for instruction, model_key in tqdm(
+            pending_pairs, desc="Judging", unit="comparisons"
+        ):
             outputs = [
-                ("sft", sft_map[instruction]),
-                ("og_dpo", og_dpo_map[instruction]),
-                ("dpo", dpo_map[instruction]),
+                (model_key, model_maps[model_key][instruction]),
+                ("chosen", chosen_map[instruction]),
             ]
-            instruction_seed = _seed_for_instruction(seed, instruction)
-            rng = random.Random(instruction_seed)
+            instruction_seed = _seed_for_pair(seed, instruction, model_key)
+            rng = (
+                random.Random(instruction_seed)
+                if instruction_seed is not None
+                else random.Random()
+            )
             rng.shuffle(outputs)
-            label_map = {"A": outputs[0][0], "B": outputs[1][0], "C": outputs[2][0]}
+            label_map = {"A": outputs[0][0], "B": outputs[1][0]}
             labeled_outputs = {
                 "A": outputs[0][1],
                 "B": outputs[1][1],
-                "C": outputs[2][1],
             }
-
-            if instruction in seen:
-                continue
 
             prompt = _build_prompt(prompt_template, instruction, labeled_outputs)
             content, usage = _call_gpt4_oracle(
@@ -370,14 +486,18 @@ def main() -> None:
             if winner is None:
                 winner = "TIE"
 
-            winner_key = label_map.get(winner, winner)
-            _record_count(counts, winner_key)
+            winner_key = label_map.get(winner)
+            if winner_key is None:
+                winner = "TIE"
+                winner_key = "TIE"
+            _record_count(counts, model_key, winner_key)
             total += 1
 
             out_f.write(
                 json.dumps(
                     {
                         "instruction": instruction,
+                        "model_key": model_key,
                         "comparison": comparison,
                         "winner": winner,
                         "winner_key": winner_key,
@@ -392,13 +512,15 @@ def main() -> None:
             )
             out_f.flush()
 
-    summary = _summarize(counts, total)
-    summary["model"] = model_name
+    summary = _summarize(counts)
+    summary["judge_model"] = model_name
+    summary["dataset_repo"] = dataset_repo
+    summary["dataset_split"] = dataset_split
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     with summary_path.open("w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=True, indent=2)
 
-    print(f"Judged {total} instructions.")
+    print(f"Judged {total} comparisons.")
     print(summary)
 
 
