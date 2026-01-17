@@ -38,4 +38,4 @@ test/gpt_judge/outputs/
 test/gpt_judge/results/
 test/gpt_judge/visualizations/
 test/gpt_judge_HH/outputs/
-test/gpt_judge_HH/results/
+test/gpt_judge_HH/results/gpt4o_judgments.jsonl
