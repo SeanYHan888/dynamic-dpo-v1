@@ -15,6 +15,7 @@ from tqdm import tqdm
 from .hh_parser import extract_prompt_and_reference, messages_have_raw_role_tags
 from .rollout import RMJudge, RolloutGenerator
 from .utils import load_model, load_tokenizer, seed_everything
+from util import LLAMA3_CHAT_TEMPLATE
 
 ASSISTANT_HEADER = "<|start_header_id|>assistant<|end_header_id|>\\n\\n"
 SPECIAL_TOKEN_RE = re.compile(r"<\\|[^>]+?\\|>")
@@ -180,7 +181,9 @@ def main() -> None:
             dtype=vllm_dtype,
         )
         tokenizer = generator.tokenizer # Use vLLM's tokenizer
-        
+        if not tokenizer.chat_template:
+            tokenizer.chat_template = LLAMA3_CHAT_TEMPLATE
+
         # vLLM is efficient with large batches
         batch_size = int(rollout_cfg["vllm_batch_size"])
         model = None # No HF model object
@@ -236,6 +239,7 @@ def main() -> None:
         "temperature": float(rollout_cfg["temperature"]),
         "top_p": float(rollout_cfg["top_p"]),
         "max_new_tokens": int(rollout_cfg["max_new_tokens"]),
+        "min_new_tokens": int(rollout_cfg["min_new_tokens"]),
     }
     
     meta_base = {
@@ -277,14 +281,38 @@ def main() -> None:
         
         # Branch for generator type
         if rollout_cfg["engine"] == "vllm":
-            # vLLM generator handles large batch internally, returns only groups
-            candidates = generator.generate_batch(
-                prompt_texts,
-                num_return_sequences=responses_per_prompt,
-                **gen_kwargs
-            )
-            raw_candidates = [None] * len(candidates)
-            token_counts = None
+            if debug_enabled and rollout_cfg["log_throughput"]:
+                candidates, raw_candidates, token_counts = generator.generate_batch(
+                    prompt_texts,
+                    num_return_sequences=responses_per_prompt,
+                    return_raw=True,
+                    return_token_counts=True,
+                    **gen_kwargs,
+                )
+            elif debug_enabled:
+                candidates, raw_candidates = generator.generate_batch(
+                    prompt_texts,
+                    num_return_sequences=responses_per_prompt,
+                    return_raw=True,
+                    **gen_kwargs,
+                )
+                token_counts = None
+            elif rollout_cfg["log_throughput"]:
+                candidates, token_counts = generator.generate_batch(
+                    prompt_texts,
+                    num_return_sequences=responses_per_prompt,
+                    return_token_counts=True,
+                    **gen_kwargs,
+                )
+                raw_candidates = [None] * len(candidates)
+            else:
+                candidates = generator.generate_batch(
+                    prompt_texts,
+                    num_return_sequences=responses_per_prompt,
+                    **gen_kwargs,
+                )
+                raw_candidates = [None] * len(candidates)
+                token_counts = None
         else:
             # Standard HF logic
             if debug_enabled and rollout_cfg["log_throughput"]:

@@ -358,9 +358,18 @@ class VLLMRolloutGenerator:
     def generate_batch(
         self,
         prompt_texts: List[str],
+        *,
+        return_raw: bool = False,
+        return_token_counts: bool = False,
         **generation_kwargs,
-    ) -> List[List[str]]:
+    ):
         if not prompt_texts:
+            if return_raw and return_token_counts:
+                return [], [], []
+            if return_raw:
+                return [], []
+            if return_token_counts:
+                return [], []
             return []
 
         from vllm import SamplingParams
@@ -370,9 +379,17 @@ class VLLMRolloutGenerator:
         # vLLM expects float for temp/top_p, etc.
         temperature = float(generation_kwargs.get("temperature", 1.0))
         top_p = float(generation_kwargs.get("top_p", 1.0))
+        do_sample = generation_kwargs.get("do_sample", True)
+        if not do_sample:
+            # Match HF greedy decoding semantics when sampling is disabled.
+            temperature = 0.0
+            top_p = 1.0
         max_tokens = int(generation_kwargs.get("max_new_tokens", 512))
+        min_tokens = generation_kwargs.get("min_new_tokens", 0)
+        min_tokens = max(0, int(min_tokens)) if min_tokens is not None else 0
         
         # Stop tokens
+        # Match HF: stop on EOS/EOT during generation, then truncate stop strings after decoding.
         stop_strings = generation_kwargs.get("stop_strings", DEFAULT_STOP_STRINGS)
         stop_token_ids = self._resolve_stop_token_ids(generation_kwargs.get("eos_token_id", []))
 
@@ -381,7 +398,9 @@ class VLLMRolloutGenerator:
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
-            stop=list(stop_strings) if stop_strings else None,
+            min_tokens=min_tokens,
+            # Stop strings are applied post-decode to mirror HF truncation behavior.
+            stop=None,
             stop_token_ids=list(set(stop_token_ids)) if stop_token_ids else None,
         )
 
@@ -389,21 +408,52 @@ class VLLMRolloutGenerator:
         # use_tqdm=False to keep logs clean or let caller handle progress
         outputs = self.llm.generate(prompt_texts, sampling_params, use_tqdm=True)
 
-        # Unpack
-        # outputs is List[RequestOutput]
-        # output.outputs is List[CompletionOutput] (length n)
-        grouped_candidates = []
+        grouped: List[List[str]] = []
+        raw_grouped: List[List[str]] = []
+        count_grouped: List[List[int]] = []
         for request_output in outputs:
-            cands = [completion.text for completion in request_output.outputs]
-            grouped_candidates.append(cands)
+            cands: List[str] = []
+            raw_cands: List[str] = []
+            counts: List[int] = []
+            for completion in request_output.outputs:
+                token_ids = getattr(completion, "token_ids", None)
+                if token_ids:
+                    # Decode from token IDs to strip special tokens like HF.
+                    raw_text = self.tokenizer.decode(token_ids, skip_special_tokens=False)
+                    decoded = self.tokenizer.decode(token_ids, skip_special_tokens=True)
+                    token_count = len(token_ids)
+                else:
+                    raw_text = completion.text
+                    decoded = completion.text
+                    token_count = len(self.tokenizer.encode(decoded, add_special_tokens=False))
+                decoded = self._truncate_at_stop_strings(decoded, stop_strings)
+                cands.append(decoded)
+                if return_raw:
+                    raw_cands.append(raw_text)
+                if return_token_counts:
+                    counts.append(token_count)
+            grouped.append(cands)
+            if return_raw:
+                raw_grouped.append(raw_cands)
+            if return_token_counts:
+                count_grouped.append(counts)
 
-        # vLLM returns raw text usually. If we need token counts, we'd need to count them
-        # or check completion.token_ids.
-        # Original interface supported return_raw/return_token_counts.
-        # For minimal migration, we just return the text groups.
-        # If needed, we can implement return_token_counts by len(completion.token_ids).
-        
-        return grouped_candidates
+        if return_raw and return_token_counts:
+            return grouped, raw_grouped, count_grouped
+        if return_raw:
+            return grouped, raw_grouped
+        if return_token_counts:
+            return grouped, count_grouped
+        return grouped
+
+    @staticmethod
+    def _truncate_at_stop_strings(text: str, stop_strings: Iterable[str]) -> str:
+        if not stop_strings:
+            return text.strip()
+        stop_positions = [text.find(s) for s in stop_strings if s in text]
+        if stop_positions:
+            text = text[: min(stop_positions)]
+        return text.strip()
 # stop_tokens handling
     def _resolve_stop_token_ids(self, stop_token_ids) -> List[int]:
         resolved: List[int] = []
