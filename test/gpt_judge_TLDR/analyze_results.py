@@ -18,6 +18,10 @@ COMPARISON_MAP = {
     "sft_vs_standard_dpo": ("sft", "standard_dpo"),
     "sft_vs_beta_dpo": ("sft", "beta_dpo"),
     "sft_vs_dynamic_beta_dpo": ("sft", "dynamic_beta_dpo"),
+    "base_vs_sft": ("base_model", "sft"),
+    "base_vs_standard_dpo": ("base_model", "standard_dpo"),
+    # "base_vs_beta_dpo": ("base_model", "beta_dpo"),
+    "base_vs_dynamic_beta_dpo": ("base_model", "dynamic_beta_dpo"),
 }
 
 

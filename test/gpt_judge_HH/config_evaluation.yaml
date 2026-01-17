@@ -14,10 +14,10 @@ dataset:
 
 # Model Paths
 models:
-  sft: "jackf857/Llama32-1b-Instruct-hh-sft-30"  # Update with actual path
+  sft: "W-61/hh-llama32-1b-sft"  # Update with actual path
   standard_dpo: "jackf857/llama32-1b-dpo-hh-rollout"
   # beta_dpo: "path/to/beta_dpo"
-  dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh"
+  dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh-rollout"
   no_instruction_sft: "W-61/hh-llama32-1b-sft"
   
 # Generation Parameters

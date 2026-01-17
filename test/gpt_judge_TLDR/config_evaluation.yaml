@@ -14,11 +14,15 @@ dataset:
 
 # Model Paths
 models:
-  sft: "jackf857/Llama32-1b-Instruct-hh-sft-30"  # Update with actual path
-  standard_dpo: "jackf857/llama32-1b-dpo-hh-rollout"
-  # beta_dpo: "path/to/beta_dpo"
-  dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh"
-
+  # sft: "W-61/hh-llama32-1b-sft"  # Update with actual path
+  # standard_dpo: "jackf857/llama32-1b-dpo-hh-rollout"
+  # # beta_dpo: "path/to/beta_dpo"
+  # dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh-rollout"
+    # base_model: "meta-llama/Llama-3.2-1B"
+    sft: "W-61/hh-llama32-1b-sft"  # Update with actual path
+    standard_dpo: "jackf857/llama32-1b-dpo-hh"
+    # beta_dpo: "path/to/beta_dpo"
+    dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh"
 # Generation Parameters
 generation:
   max_new_tokens: 128
