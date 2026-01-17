@@ -194,7 +194,7 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=str,
-        default="test/gpt_judge/config_evaluation.yaml",
+        default="test/gpt_judge_TLDR/config_evaluation.yaml",
         help="Path to evaluation config YAML",
     )
     parser.add_argument(
@@ -213,9 +213,9 @@ def main() -> None:
 
     config = _load_config(args.config)
     output_cfg = config.get("output", {})
-    results_dir = Path(args.results_dir or output_cfg.get("results_dir", "test/gpt_judge/results"))
+    results_dir = Path(args.results_dir or output_cfg.get("results_dir", "test/gpt_judge_TLDR/results"))
     output_dir = Path(
-        args.output_dir or output_cfg.get("visualizations_dir", "test/gpt_judge/visualizations")
+        args.output_dir or output_cfg.get("visualizations_dir", "test/gpt_judge_TLDR/visualizations")
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 

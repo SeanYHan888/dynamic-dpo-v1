@@ -75,7 +75,7 @@ graph TD
 
 Create a script to load and prepare the TLDR evaluation dataset.
 
-**File**: `test/gpt_judge/data_process_tldr.py`
+**File**: `test/gpt_judge_TLDR/data_process_tldr.py`
 
 **Key Functions**:
 - Load TLDR dataset from HuggingFace (`trl-lib/tldr`)
@@ -108,7 +108,7 @@ Track and log:
 
 Create a unified generation script that produces summaries from all four models.
 
-**File**: `test/gpt_judge/generate_summaries.py`
+**File**: `test/gpt_judge_TLDR/generate_summaries.py`
 
 **Functionality**:
 - Load each model (SFT, Standard DPO, Beta DPO, Dynamic Beta DPO)
@@ -177,7 +177,7 @@ You are an expert evaluator for text summarization quality. Your task is to comp
 
 #### Step 3.2: Implement GPT-4 Evaluation Script
 
-**File**: `test/gpt_judge/gpt4_oracle.py`
+**File**: `test/gpt_judge_TLDR/gpt4_oracle.py`
 
 **Core Functions**:
 
@@ -222,7 +222,7 @@ You are an expert evaluator for text summarization quality. Your task is to comp
 
 #### Step 4.1: Calculate Win/Loss Rates
 
-**File**: `test/gpt_judge/analyze_results.py`
+**File**: `test/gpt_judge_TLDR/analyze_results.py`
 
 **Metrics to Compute**:
 
@@ -261,7 +261,7 @@ Create a comparison table:
 
 #### Step 4.3: Qualitative Analysis
 
-**File**: `test/gpt_judge/qualitative_analysis.py`
+**File**: `test/gpt_judge_TLDR/qualitative_analysis.py`
 
 - Sample wins/losses for manual review
 - Identify common failure patterns
@@ -282,7 +282,7 @@ Create visualizations:
 
 ### Component 1: Data Processing
 
-#### [NEW] [data_process_tldr.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge/data_process_tldr.py)
+#### [NEW] [data_process_tldr.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge_TLDR/data_process_tldr.py)
 
 **Purpose**: Load and prepare TLDR evaluation dataset
 
@@ -303,13 +303,13 @@ def save_evaluation_set(data: List[Dict], output_path: str):
     """Save formatted evaluation set to JSON."""
 ```
 
-**Output**: `test/gpt_judge/data/tldr_eval_set.json`
+**Output**: `test/gpt_judge_TLDR/data/tldr_eval_set.json`
 
 ---
 
 ### Component 2: Summary Generation
 
-#### [NEW] [generate_summaries.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge/generate_summaries.py)
+#### [NEW] [generate_summaries.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge_TLDR/generate_summaries.py)
 
 **Purpose**: Generate summaries from all models for evaluation
 
@@ -347,13 +347,13 @@ model_configs = {
 }
 ```
 
-**Output**: `test/gpt_judge/outputs/all_summaries.json`
+**Output**: `test/gpt_judge_TLDR/outputs/all_summaries.json`
 
 ---
 
 ### Component 3: GPT-4 Oracle Evaluation
 
-#### [NEW] [gpt4_oracle.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge/gpt4_oracle.py)
+#### [NEW] [gpt4_oracle.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge_TLDR/gpt4_oracle.py)
 
 **Purpose**: Use GPT-4 to evaluate summary pairs
 
@@ -390,7 +390,7 @@ def parse_gpt4_response(response: str) -> Dict:
 - `sft_vs_beta_dpo`
 - `sft_vs_dynamic_beta_dpo`
 
-**Output**: `test/gpt_judge/results/{comparison_type}_evaluations.json`
+**Output**: `test/gpt_judge_TLDR/results/{comparison_type}_evaluations.json`
 
 **Output Schema**:
 ```json
@@ -411,7 +411,7 @@ def parse_gpt4_response(response: str) -> Dict:
 
 ### Component 4: Results Analysis
 
-#### [NEW] [analyze_results.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge/analyze_results.py)
+#### [NEW] [analyze_results.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge_TLDR/analyze_results.py)
 
 **Purpose**: Calculate win/loss rates and generate analysis
 
@@ -435,14 +435,14 @@ def generate_report(results_dir: str, output_path: str):
 ```
 
 **Outputs**:
-- `test/gpt_judge/results/win_rates_summary.csv`
-- `test/gpt_judge/results/evaluation_report.md`
+- `test/gpt_judge_TLDR/results/win_rates_summary.csv`
+- `test/gpt_judge_TLDR/results/evaluation_report.md`
 
 ---
 
 ### Component 5: Visualization & Reporting
 
-#### [NEW] [visualize_results.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge/visualize_results.py)
+#### [NEW] [visualize_results.py](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge_TLDR/visualize_results.py)
 
 **Purpose**: Create visualizations and qualitative analysis
 
@@ -461,7 +461,7 @@ def generate_report(results_dir: str, output_path: str):
 
 ## Configuration File
 
-#### [NEW] [config_evaluation.yaml](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge/config_evaluation.yaml)
+#### [NEW] [config_evaluation.yaml](file:///Users/seanmacbook/Research/dpo/dynamic-dpo-v1/test/gpt_judge_TLDR/config_evaluation.yaml)
 
 ```yaml
 # Dataset Configuration
@@ -496,10 +496,10 @@ gpt4_oracle:
 
 # Output Paths
 output:
-  data_dir: "test/gpt_judge/data"
-  summaries_dir: "test/gpt_judge/outputs"
-  results_dir: "test/gpt_judge/results"
-  visualizations_dir: "test/gpt_judge/visualizations"
+  data_dir: "test/gpt_judge_TLDR/data"
+  summaries_dir: "test/gpt_judge_TLDR/outputs"
+  results_dir: "test/gpt_judge_TLDR/results"
+  visualizations_dir: "test/gpt_judge_TLDR/visualizations"
 ```
 
 ---
@@ -510,43 +510,43 @@ output:
 
 ```bash
 # Step 1: Prepare evaluation dataset
-python test/gpt_judge/data_process_tldr.py \
-    --config test/gpt_judge/config_evaluation.yaml \
-    --output test/gpt_judge/data/tldr_eval_set.json
+python test/gpt_judge_TLDR/data_process_tldr.py \
+    --config test/gpt_judge_TLDR/config_evaluation.yaml \
+    --output test/gpt_judge_TLDR/data/tldr_eval_set.json
 
 # Step 2: Generate summaries from all models
-python test/gpt_judge/generate_summaries.py \
-    --config test/gpt_judge/config_evaluation.yaml \
-    --eval_data test/gpt_judge/data/tldr_eval_set.json \
-    --output test/gpt_judge/outputs/all_summaries.json
+python test/gpt_judge_TLDR/generate_summaries.py \
+    --config test/gpt_judge_TLDR/config_evaluation.yaml \
+    --eval_data test/gpt_judge_TLDR/data/tldr_eval_set.json \
+    --output test/gpt_judge_TLDR/outputs/all_summaries.json
 
 # Step 3: Run GPT-4 evaluations (3 comparisons)
 export OPENAI_API_KEY=<your_key>
 
-python test/gpt_judge/gpt4_oracle.py \
-    --summaries test/gpt_judge/outputs/all_summaries.json \
+python test/gpt_judge_TLDR/gpt4_oracle.py \
+    --summaries test/gpt_judge_TLDR/outputs/all_summaries.json \
     --comparison sft_vs_standard_dpo \
-    --output test/gpt_judge/results/sft_vs_standard_dpo.json
+    --output test/gpt_judge_TLDR/results/sft_vs_standard_dpo.json
 
-python test/gpt_judge/gpt4_oracle.py \
-    --summaries test/gpt_judge/outputs/all_summaries.json \
+python test/gpt_judge_TLDR/gpt4_oracle.py \
+    --summaries test/gpt_judge_TLDR/outputs/all_summaries.json \
     --comparison sft_vs_beta_dpo \
-    --output test/gpt_judge/results/sft_vs_beta_dpo.json
+    --output test/gpt_judge_TLDR/results/sft_vs_beta_dpo.json
 
-python test/gpt_judge/gpt4_oracle.py \
-    --summaries test/gpt_judge/outputs/all_summaries.json \
+python test/gpt_judge_TLDR/gpt4_oracle.py \
+    --summaries test/gpt_judge_TLDR/outputs/all_summaries.json \
     --comparison sft_vs_dynamic_beta_dpo \
-    --output test/gpt_judge/results/sft_vs_dynamic_beta_dpo.json
+    --output test/gpt_judge_TLDR/results/sft_vs_dynamic_beta_dpo.json
 
 # Step 4: Analyze results
-python test/gpt_judge/analyze_results.py \
-    --results_dir test/gpt_judge/results \
-    --output test/gpt_judge/results/evaluation_report.md
+python test/gpt_judge_TLDR/analyze_results.py \
+    --results_dir test/gpt_judge_TLDR/results \
+    --output test/gpt_judge_TLDR/results/evaluation_report.md
 
 # Step 5: Generate visualizations
-python test/gpt_judge/visualize_results.py \
-    --results_dir test/gpt_judge/results \
-    --output_dir test/gpt_judge/visualizations
+python test/gpt_judge_TLDR/visualize_results.py \
+    --results_dir test/gpt_judge_TLDR/results \
+    --output_dir test/gpt_judge_TLDR/visualizations
 ```
 
 ---
@@ -600,7 +600,7 @@ For **500 evaluation examples** × **3 comparisons** = **1,500 GPT-4 calls**:
 ## File Structure
 
 ```
-test/gpt_judge/
+test/gpt_judge_TLDR/
 ├── config_evaluation.yaml          # Configuration file
 ├── data_process_tldr.py            # Dataset preparation
 ├── generate_summaries.py           # Model output generation

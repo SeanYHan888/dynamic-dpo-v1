@@ -216,7 +216,7 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=str,
-        default="test/gpt_judge/config_evaluation.yaml",
+        default="test/gpt_judge_TLDR/config_evaluation.yaml",
         help="Path to evaluation config YAML",
     )
     parser.add_argument(
@@ -255,7 +255,7 @@ def main() -> None:
     oracle_cfg = config.get("gpt4_oracle", {})
     output_cfg = config.get("output", {})
     output_path = args.output or str(
-        Path(output_cfg.get("results_dir", "test/gpt_judge/results"))
+        Path(output_cfg.get("results_dir", "test/gpt_judge_TLDR/results"))
         / f"{args.comparison}.json"
     )
 
