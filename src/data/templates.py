@@ -1,9 +1,12 @@
+"""Chat templates and HH format parsing utilities."""
+
 import re
 from typing import Dict, List
 
+
 TAG_RE = re.compile(r"\n\n(Human|Assistant): ?")
 
-#Dataclass for LLAMA3 chat template
+# Llama 3 chat template
 LLAMA3_CHAT_TEMPLATE = (
     "{% set loop_messages = messages %}"
     "{% for message in loop_messages %}"
@@ -18,16 +21,22 @@ LLAMA3_CHAT_TEMPLATE = (
     "{% endif %}"
 )
 
-#Dataset processing functions for HH format, strip leading newlines
+
 def strip_one_leading_newline(text: str) -> str:
     """Remove a single leading newline to normalize HH blocks."""
     return text[1:] if text.startswith("\n") else text
 
-#Dataset processing functions for HH format, parse to messages
+
 def parse_hh_to_messages(text: str) -> List[Dict[str, str]]:
-    """
-    Parse Anthropic HH multi-turn text into [{role, content}, ...].
+    """Parse Anthropic HH multi-turn text into [{role, content}, ...].
+    
     Ensures content is trimmed and skips empty blocks.
+    
+    Args:
+        text: Raw HH format text with Human/Assistant turns.
+        
+    Returns:
+        List of message dictionaries with 'role' and 'content' keys.
     """
     text = str(text).replace("\r\n", "\n").replace("\r", "\n")
     if not text.startswith("\n\nHuman:") and not text.startswith("\n\nAssistant:"):

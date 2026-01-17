@@ -1,3 +1,5 @@
+"""Debug utilities for DPO training."""
+
 import json
 import os
 import random
@@ -217,6 +219,19 @@ def log_dpo_debug_samples(
     raw_dataset: Any = None,
     console_n: int = 5,
 ) -> Optional[str]:
+    """Log debug samples from DPO training.
+    
+    Args:
+        trainer: The DPO trainer instance.
+        output_dir: Directory to save debug logs.
+        first_n: Number of first samples to log.
+        random_n: Number of random samples to log.
+        raw_dataset: Optional raw dataset for extracting original records.
+        console_n: Number of samples to print to console.
+        
+    Returns:
+        Path to the output JSONL file, or None if logging failed.
+    """
     try:
         os.makedirs(output_dir, exist_ok=True)
     except Exception:

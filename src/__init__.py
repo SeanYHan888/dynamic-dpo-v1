@@ -1,1 +1,1 @@
-"""Project package root for shared modules."""
+# src package

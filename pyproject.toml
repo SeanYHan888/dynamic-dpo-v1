@@ -1,7 +1,7 @@
 [project]
 name = "dynamic-dpo-v1"
 version = "0.1.0"
-description = "Add your description here"
+description = "Dynamic Beta DPO Training Framework"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
@@ -25,3 +25,19 @@ dependencies = [
     "trl>=0.26.2",
     "wandb>=0.23.1",
 ]
+
+[project.scripts]
+train-dpo = "src.cli:main_dpo"
+train-sft = "src.cli:main_sft"
+train-beta-dpo = "src.cli:main_beta_dpo"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true

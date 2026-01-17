@@ -1,24 +1,35 @@
+"""HH (Anthropic Helpful-Harmless) dataset processing utilities."""
+
 from datasets import load_dataset, Dataset
 from typing import Any, Dict, Iterable, List, Optional
 
-from util import LLAMA3_CHAT_TEMPLATE, parse_hh_to_messages
+from .templates import LLAMA3_CHAT_TEMPLATE, parse_hh_to_messages
+
 
 ASSISTANT_TAG = "\n\nAssistant:"
+HUMAN_TAG = "\n\nHuman:"
 LLAMA3_ASSISTANT_HEADER = "<|start_header_id|>assistant<|end_header_id|>\n\n"
 
-# delete the \n at the beginning of the response
-def strip_one_leading_newline(s): 
+
+def strip_one_leading_newline(s: str) -> str:
+    """Remove a single leading newline to normalize HH blocks."""
     return s[1:] if s.startswith("\n") else s
 
-def split_prompt_and_response(input_text):
-    """
-    HH format: multi-turn text containing many "\n\nAssistant:".
+
+def split_prompt_and_response(input_text: str) -> tuple[str, str]:
+    """Split HH format text into prompt and response.
+    
+    HH format: multi-turn text containing many "\\n\\nAssistant:".
     We take the LAST Assistant tag as the start of the final assistant response.
 
+    Args:
+        input_text: Raw HH format text.
+        
     Returns:
-    prompt: everything up to and including the final "\n\nAssistant:"
-    response: the assistant completion after that tag (no leading newline)
-    
+        Tuple of (prompt, response) where prompt includes the final Assistant tag.
+        
+    Raises:
+        ValueError: If no Assistant tag is found.
     """
     input_text = str(input_text).replace("\r\n", "\n").replace("\r", "\n")
     index = input_text.rfind(ASSISTANT_TAG)
@@ -30,45 +41,39 @@ def split_prompt_and_response(input_text):
     return prompt, response
 
 
-def convert_to_triples(chosen_text, rejected_text):
-    """
-    convert one HH row into an explicit triplet:
-      {prompt, chosen, rejected}
-
-    """
-    # get prompt and response from chosen_text
+def convert_to_triples(
+    chosen_text: str, rejected_text: str
+) -> Optional[Dict[str, str]]:
+    """Convert one HH row into an explicit triplet: {prompt, chosen, rejected}."""
     chosen_prompt, chosen_response = split_prompt_and_response(chosen_text)
 
-    # assume the chosen and rejected prompts are same
     if not rejected_text.startswith(chosen_prompt):
         return None
-    
+
     rejected_response = strip_one_leading_newline(rejected_text[len(chosen_prompt):])
-    
-    
+
     if len(chosen_prompt.strip()) == 0:
         return None
     if len(chosen_response.strip()) == 0 or len(rejected_response.strip()) == 0:
         return None
-    
-    return {"prompt": chosen_prompt,
-            "chosen": chosen_response,
-            "rejected": rejected_response}
 
-# process entire dataset, build hh dataset
-def build_HH_dataset(ds):
+    return {
+        "prompt": chosen_prompt,
+        "chosen": chosen_response,
+        "rejected": rejected_response,
+    }
+
+
+def build_HH_dataset(ds) -> Dataset:
+    """Process entire dataset into HH triplets format."""
     hh_ds_raw = []
     for idx, row in enumerate(ds):
         output = convert_to_triples(
-            chosen_text = row['chosen'],
-            rejected_text = row['rejected']
+            chosen_text=row["chosen"], rejected_text=row["rejected"]
         )
         if output is not None:
             hh_ds_raw.append(output)
     return Dataset.from_list(hh_ds_raw)
-
-
-HUMAN_TAG = "\n\nHuman:"
 
 
 def _normalize_text(text: Any) -> str:
@@ -129,6 +134,7 @@ def _extract_response_text(value: Any) -> Optional[str]:
 
 
 def build_rollout_dataset(ds: Iterable[Dict[str, Any]]) -> Dataset:
+    """Build dataset from rollout generation outputs."""
     rollout_ds_raw: List[Dict[str, str]] = []
     for row in ds:
         prompt_messages = _coerce_messages(row.get("prompt_messages"))
@@ -151,14 +157,14 @@ def build_rollout_dataset(ds: Iterable[Dict[str, Any]]) -> Dataset:
     return Dataset.from_list(rollout_ds_raw)
 
 
-def load_generated_hf_dataset(
-    dataset_name: str, *, subset: str = "train"
-) -> Dataset:
+def load_generated_hf_dataset(dataset_name: str, *, subset: str = "train") -> Dataset:
+    """Load a generated dataset from HuggingFace."""
     raw_ds = load_dataset(dataset_name, split=subset)
     return build_rollout_dataset(raw_ds)
 
 
 def load_generated_dataset_from_config(config: Dict[str, Any]) -> Dataset:
+    """Load generated dataset using configuration dictionary."""
     dataset_cfg = config.get("dataset", {})
     dataset_name = dataset_cfg.get("dataset_name")
     if not dataset_name:
@@ -176,7 +182,6 @@ def _ensure_generation_prompt(prompt_text: str, tokenizer: Any) -> str:
     trimmed = prompt_text.rstrip()
     if trimmed.endswith(LLAMA3_ASSISTANT_HEADER.rstrip()):
         return prompt_text
-    # Some tokenizer versions ignore add_generation_prompt; patch in Llama3 header.
     template = getattr(tokenizer, "chat_template", "") or ""
     if "<|start_header_id|>" in prompt_text or "start_header_id" in template:
         return f"{prompt_text}{LLAMA3_ASSISTANT_HEADER}"
@@ -206,6 +211,7 @@ def _render_response_with_chat_template(
 
 
 def apply_chat_template_to_dataset(ds: Dataset, tokenizer: Any) -> Dataset:
+    """Apply chat template to dataset prompts and responses."""
     _ensure_chat_template(tokenizer)
     rows: List[Dict[str, str]] = []
     for row in ds:
@@ -243,6 +249,3 @@ def apply_chat_template_to_dataset(ds: Dataset, tokenizer: Any) -> Dataset:
             }
         )
     return Dataset.from_list(rows)
-
-
-

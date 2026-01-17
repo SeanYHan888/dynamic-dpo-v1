@@ -1,33 +1,31 @@
+"""SFT training utilities."""
+
+import os
+from typing import Any, Dict
+
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM
 from trl import SFTConfig, SFTTrainer
 
-from data_process_sft import build_sft_dataset, load_tokenizer
-from util import LLAMA3_CHAT_TEMPLATE
-
-import argparse
-import yaml
+from ..data.sft_dataset import build_sft_dataset, load_tokenizer
+from ..data.templates import LLAMA3_CHAT_TEMPLATE
 
 
-def load_yaml(path: str):
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="config_dpo.yaml")
-    args = parser.parse_args()
-
-    config = load_yaml(args.config)
-
+def run_sft_training(config: Dict[str, Any]) -> SFTTrainer:
+    """Run SFT training based on configuration.
+    
+    Args:
+        config: Configuration dictionary with model, dataset, and training settings.
+        
+    Returns:
+        The trained SFTTrainer instance.
+    """
     model_name = config["policy_name"]
     sft_cfg = config["sft_training"]
     dataset_cfg = config["dataset"]
 
     tok = load_tokenizer(model_name, padding_side="right")
     
-    # Set the chat template for SFTTrainer to use
     if not tok.chat_template:
         tok.chat_template = LLAMA3_CHAT_TEMPLATE
 
@@ -45,9 +43,7 @@ def main():
     prec = config["precision"].lower()
     fp16 = prec == "fp16"
     bf16 = prec == "bf16"
-    
-    # Use built-in completion_only_loss which leverages the tokenizer's chat template
-    # SFTTrainer will automatically look for the "messages" column in the dataset
+
     training_args = SFTConfig(
         output_dir=sft_cfg["save_dir"],
         learning_rate=float(sft_cfg["learning_rate"]),
@@ -69,20 +65,17 @@ def main():
         remove_unused_columns=False,
         hub_model_id=sft_cfg.get("hub_model_id"),
         push_to_hub=bool(sft_cfg.get("push_to_hub")),
-        dataset_text_field="messages",  # Explicitly tell it to look for messages
-        completion_only_loss=True,     # New TRL 0.20+ way to mask prompts
+        dataset_text_field="messages",
+        completion_only_loss=True,
     )
 
+    # WandB initialization
     wandb_project = sft_cfg.get("wandb_project")
     if wandb_project:
         import torch.distributed as dist
-
-        is_main = (not dist.is_available()) or (not dist.is_initialized()) or (
-            dist.get_rank() == 0
-        )
+        is_main = (not dist.is_available()) or (not dist.is_initialized()) or (dist.get_rank() == 0)
         if is_main:
             import wandb
-
             wandb.init(
                 project=str(wandb_project),
                 name=training_args.run_name,
@@ -100,24 +93,4 @@ def main():
     trainer.train()
     trainer.save_model()
 
-    # if bool(sft_cfg.get("push_to_hub")):
-    import torch.distributed as dist
-    is_main = (not dist.is_available()) or (not dist.is_initialized()) or (dist.get_rank() == 0)
-
-    if is_main:
-        hub_model_id = sft_cfg.get("hub_model_id")
-        if hub_model_id:
-            try:
-                push = input(f"\nDo you want to push the model to the Hub ({hub_model_id})? [y/N]: ").strip().lower()
-                if push == "y":
-                    print(f"Pushing model to {hub_model_id}...")
-                    trainer.push_to_hub()
-            except EOFError:
-                # Handle case where input is not available (e.g. non-interactive monitoring)
-                pass
-        else:
-            print("No hub_model_id configured, skipping interactive push.")
-
-
-if __name__ == "__main__":
-    main()
+    return trainer

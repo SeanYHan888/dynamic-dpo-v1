@@ -1,7 +1,9 @@
+"""SFT dataset processing utilities."""
+
 from datasets import Dataset
 from transformers import AutoTokenizer
 
-from util import LLAMA3_CHAT_TEMPLATE, parse_hh_to_messages
+from .templates import LLAMA3_CHAT_TEMPLATE, parse_hh_to_messages
 
 
 def load_tokenizer(
@@ -11,7 +13,17 @@ def load_tokenizer(
     add_chat_template: bool = True,
     use_fast: bool = True,
 ) -> AutoTokenizer:
-    """Load tokenizer with padding and template defaults for chat models."""
+    """Load tokenizer with padding and template defaults for chat models.
+    
+    Args:
+        model_name: HuggingFace model name or path.
+        padding_side: Side to pad sequences ('left' or 'right').
+        add_chat_template: Whether to add Llama3 chat template if missing.
+        use_fast: Whether to use the fast tokenizer.
+        
+    Returns:
+        Configured AutoTokenizer instance.
+    """
     tok = AutoTokenizer.from_pretrained(model_name, use_fast=use_fast)
     tok.padding_side = padding_side
     if tok.pad_token_id is None:
@@ -21,10 +33,17 @@ def load_tokenizer(
     return tok
 
 
-def build_sft_dataset(ds, tokenizer=None):
-    """
-    Convert HH dataset rows into a messages-format dataset for SFT,
-    trimming any trailing assistant response to keep a prompt-only history.
+def build_sft_dataset(ds, tokenizer=None) -> Dataset:
+    """Convert HH dataset rows into a messages-format dataset for SFT.
+    
+    Trims any trailing assistant response to keep a prompt-only history.
+    
+    Args:
+        ds: Input dataset with 'chosen' field in HH format.
+        tokenizer: Optional tokenizer (unused, kept for API compatibility).
+        
+    Returns:
+        Dataset with 'messages' field for SFT training.
     """
     rows = []
     for row in ds:
