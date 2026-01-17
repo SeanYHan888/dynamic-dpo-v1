@@ -1,7 +1,7 @@
 from datasets import Dataset
 from transformers import AutoTokenizer
 
-from util import LLAMA3_CHAT_TEMPLATE, parse_hh_to_messages
+from .templates import LLAMA3_CHAT_TEMPLATE, parse_hh_to_messages
 
 
 def load_tokenizer(

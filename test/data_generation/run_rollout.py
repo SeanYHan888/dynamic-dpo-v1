@@ -15,7 +15,7 @@ from tqdm import tqdm
 from .hh_parser import extract_prompt_and_reference, messages_have_raw_role_tags
 from .rollout import RMJudge, RolloutGenerator
 from .utils import load_model, load_tokenizer, seed_everything
-from util import LLAMA3_CHAT_TEMPLATE
+from src.data.templates import LLAMA3_CHAT_TEMPLATE
 
 ASSISTANT_HEADER = "<|start_header_id|>assistant<|end_header_id|>\\n\\n"
 SPECIAL_TOKEN_RE = re.compile(r"<\\|[^>]+?\\|>")

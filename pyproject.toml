@@ -25,3 +25,11 @@ dependencies = [
     "trl>=0.26.2",
     "wandb>=0.23.1",
 ]
+
+[project.scripts]
+train-dpo = "src.cli:main_dpo"
+train-sft = "src.cli:main_sft"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

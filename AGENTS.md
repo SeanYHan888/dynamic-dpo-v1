@@ -1,8 +1,8 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Core training scripts live at `training.py` (dynamic-beta DPO), `train_sft.py` (SFT reference), and `risk_dpo_trainer.py`/`dpo_loss.py` (custom trainer + loss). Helper math lives in `quantile_compute.py`.
-- Dataset prep is in `dataset_process_hh.py`: HH parsing via `build_HH_dataset`, plus generated-rollout loaders (`load_generated_dataset_from_config`) that map judged JSONL into `{prompt, chosen, rejected}`.
+- Core training entry points live in `src/cli.py` (`train-dpo`, `train-sft`), with training logic in `src/trainers/` and losses in `src/losses/`. Helper math lives in `src/quantile/accumulator.py`.
+- Dataset prep is in `src/data/hh_dataset.py`: HH parsing via `build_HH_dataset`, plus generated-rollout loaders (`load_generated_dataset_from_config`) that map judged JSONL into `{prompt, chosen, rejected}`.
 - Data utilities for Anthropic HH parsing and rollout generation are under `test/data_generation/` (`run_rollout.py`, `rollout.py`, `hh_parser.py`, `utils.py`).
 - Configuration is centralized in `config_dpo.yaml`; adjust datasets, precision, logging, and rollout knobs here. Plans and notes reside in `docs/`. Shell automation for RunPod is in `run_and_shutdown.sh`.
 
@@ -11,8 +11,8 @@
 - Login to Hugging Face for pulls/pushes; login to Weights & Biases only if logging runs.
 
 ## Build, Train, and Data Generation Commands
-- SFT reference model: `python train_sft.py --config config_dpo.yaml` (uses `LLAMA3_CHAT_TEMPLATE` + `SFTTrainer`; tune `sft_training` in the config).
-- Dynamic-beta DPO: `python training.py --config config_dpo.yaml` (uses `dataset.generated_data` to pick `build_HH_dataset` vs `load_generated_dataset_from_config`; saves to `trl_dynamic_beta_out`).
+- SFT reference model: `uv run train-sft --config config_dpo.yaml` (uses `LLAMA3_CHAT_TEMPLATE` + `SFTTrainer`; tune `sft_training` in the config).
+- Dynamic-beta DPO: `uv run train-dpo --config config_dpo.yaml` (uses `dataset.generated_data` to pick `build_HH_dataset` vs `load_generated_dataset_from_config`; saves to `trl_dynamic_beta_out`).
 - Rollouts for synthetic pairs: `python -m test.data_generation.run_rollout --config config_dpo.yaml --limit 50` (k candidates per prompt; JSONL under `rollout_output/`).
 
 ## Coding Style & Naming Conventions
@@ -21,8 +21,8 @@
 
 ## Testing & Validation
 - No dedicated unit tests; validate with short runs:
-  - SFT: reduce `epochs` or `max_steps`, run `train_sft.py`.
-  - DPO: shrink `dataset.subset`/`val_ratio`, run `training.py`, confirm JSONL under `logs/margins/`.
+  - SFT: reduce `epochs` or `max_steps`, run `uv run train-sft`.
+  - DPO: shrink `dataset.subset`/`val_ratio`, run `uv run train-dpo`, confirm JSONL under `logs/margins/`.
   - Rollout: run with `--limit 10`, inspect `rollout_output/manifest.json`.
 - Call `seed_everything` in new scripts for reproducibility.
 

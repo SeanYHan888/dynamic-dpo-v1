@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from util import LLAMA3_CHAT_TEMPLATE
+from src.data.templates import LLAMA3_CHAT_TEMPLATE
 
 
 def seed_everything(seed: int) -> None:

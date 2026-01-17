@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple
 
 import re
 
-from util import parse_hh_to_messages
+from src.data.templates import parse_hh_to_messages
 
 RAW_ROLE_RE = re.compile(r"(?:^|\n\n)(Human|Assistant):")
 

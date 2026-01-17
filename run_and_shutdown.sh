@@ -41,11 +41,11 @@ elif [ "$MODE" = "sft" ]; then
     # If running unattented, we pipe 'yes' to auto-confirm if you WANT to push.
     # If you do NOT want to push, remove 'yes |' and configure push_to_hub: False in config.
     # Assuming user wants to run this unattended and likely wants to push if configured.
-    yes | uv run python train_sft.py --config "$CONFIG_PATH"
+    yes | uv run train-sft --config "$CONFIG_PATH"
     JOB_EXIT_CODE=$?
 elif [ "$MODE" = "dpo" ]; then
     echo "Starting DPO training..."
-    uv run python training.py --config "$CONFIG_PATH"
+    uv run train-dpo --config "$CONFIG_PATH"
     JOB_EXIT_CODE=$?
 else
     echo "Unknown mode: $MODE (use 'rollout', 'sft', or 'dpo')"
