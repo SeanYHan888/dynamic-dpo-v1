@@ -1,0 +1,59 @@
+# Beta DPO Configuration
+# Run with: uv run train-beta-dpo --config config_beta_dpo.yaml
+
+policy_name: W-61/hh-llama32-1b-sft
+ref_name: W-61/hh-llama32-1b-sft
+precision: bf16
+
+dataset:
+  dataset_name: jackf857/hh-llama32-1b-rollout-judged
+  generated_data: true
+  chat_template: true
+  subset: train[:30%]
+  val_ratio: 0.1
+  seed: 42
+  max_len: 512
+
+dpo_training:
+  epochs: 1
+  batch_size: 16
+  eval_batch_size: 16
+  learning_rate: 5e-7
+  log_steps: 10
+  eval_steps: 500
+  save_steps: 500
+  gradient_accumulation: 4
+  max_grad_norm: 10
+  warmup_steps: 0
+  report: wandb_beta_dpo_project
+  run_name: beta-dpo-run
+  save_dir: beta_dpo_model
+  # HuggingFace Hub upload (set to your repo, e.g. "username/model-name")
+  hub_model_id: W-61/hh-llama32-1b-beta-dpo-hh-rollout # Set to "your-username/hh-llama32-1b-beta-dpo" to auto-upload
+
+# Beta DPO specific hyperparameters
+beta_dpo:
+  # Base beta value for DPO loss
+  beta_0: 0.1
+  
+  # EMA momentum for threshold (M_0, sigma) updates
+  # Higher = slower adaptation (0.0-1.0)
+  m: 0.9
+  
+  # Fraction of data to keep after filtering (0.0-1.0)
+  # Lower = more selective, higher = keep more samples
+  rho: 0.8
+  
+  # Scaling factor for adaptive beta adjustment
+  # beta = beta_0 * (1 + alpha * (gap - M_0))
+  alpha: 0.6
+  
+  # Minimum allowed beta value (clipping)
+  min_beta: 0.001
+  
+  # Numerical stability constant
+  eps: 1e-6
+  
+  # Margin logging settings
+  log_margins: true
+  log_dir: logs/beta_dpo_margins

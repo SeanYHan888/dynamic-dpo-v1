@@ -284,6 +284,16 @@ def main_beta_dpo():
     trainer.train()
     trainer.save_model(os.path.join(args.output_dir, "final"))
 
+    # Push to HuggingFace Hub if configured
+    hub_model_id = dpo_train_args.get("hub_model_id")
+    if hub_model_id:
+        import torch.distributed as dist
+        is_main = (not dist.is_available()) or (not dist.is_initialized()) or (dist.get_rank() == 0)
+        if is_main:
+            print(f"\nPushing model to HuggingFace Hub: {hub_model_id}")
+            trainer.push_to_hub(repo_id=hub_model_id)
+            print(f"Model uploaded successfully to: https://huggingface.co/{hub_model_id}")
+
 
 if __name__ == "__main__":
     main_dpo()
