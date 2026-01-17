@@ -10,7 +10,7 @@ dataset:
   val_ratio: 0.1
   seed: 42
   max_len: 512
-  
+
 dpo_training:
   epochs: 1
   batch_size: 16
@@ -23,24 +23,9 @@ dpo_training:
   max_grad_norm: 10
   warmup_steps: 120
   report: wandb_dpo_project
-  run_name: trl-dynamic-beta
+  run_name: trl-beta-dpo
   save_dpo_dir: dpo_model
-  save_dir: trl_dynamic_beta_dpo
-
-sft_training:
-  learning_rate: 5e-6
-  batch_size: 16
-  eval_batch_size: 16
-  epochs: 1
-  log_steps: 10
-  wandb_project: hh-llama32-1b-sft
-  save_steps: 500
-  warmup_steps: 120
-  max_length: 512
-  save_dir: sft_model
-  save_only_model: True
-  push_to_hub: False
-  hub_model_id: W-61/hh-llama32-1b-sft-100
+  save_dir: trl_beta_dpo
 
 risk_test:
   delta: 0.1
@@ -61,7 +46,7 @@ margin_log:
   dpo_log_dir: logs/dpo_margins
 
 beta_dpo:
-  mode_loss: risk
+  mode_loss: beta_dpo
   bdpo_m: 0.9
   rho: 0.8
   alpha: 0.5

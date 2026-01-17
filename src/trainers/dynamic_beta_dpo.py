@@ -6,6 +6,13 @@ from typing import Any, Dict
 import torch
 from trl import DPOTrainer
 
+from ..losses.beta_dpo import (
+    beta_dpo_beta_update,
+    beta_dpo_data_filter,
+    beta_dpo_dpo_loss,
+    compute_beta_dpo_margin,
+    compute_beta_dpo_threshold,
+)
 from ..losses.beta_update import update_beta
 from ..losses.dpo_loss import compute_log_prob, dpo_loss as dpo_loss_tensor
 from ..losses.margin import (
@@ -22,6 +29,9 @@ class DynamicBetaDPOConfig:
     """
     Parameters for our training steps
     """
+
+    # loss control
+    mode_loss: str = "risk"
 
     # risk control
     delta: float = 0.1
@@ -45,6 +55,13 @@ class DynamicBetaDPOConfig:
     save_per_rank: bool = False
     # if >0, truncate sample stored in jsonl to this length (recommended)
     jsonl_sample_size: int = 32
+
+    # beta dpo
+    bdpo_m: float = 0.9
+    bdpo_rho: float = 0.8
+    bdpo_a: float = 0.6
+    bdpo_min_beta: float = 1e-3
+    bdpo_eps: float = 1e-6
 
 
 class DynamicBetaDPOTrainer(DPOTrainer):
@@ -70,6 +87,10 @@ class DynamicBetaDPOTrainer(DPOTrainer):
         self.warmup_threshold = WarmupQuantileAccumulator(q=1 - self.dynamic_cfg.delta)
         self._ema: EMAUpdate | None = None
         self.tau = 0
+
+        # beta dpo
+        self.bdpo_M0: torch.Tensor | None = None
+        self.bdpo_sigma: torch.Tensor | None = None
 
         # bookkeeping for logging
         self._last_stats: Dict[str, Any] = {}
@@ -223,16 +244,62 @@ class DynamicBetaDPOTrainer(DPOTrainer):
         ref_chosen_log_prob = compute_log_prob(logits=ref_chosen_out, labels=chosen_labels)
         ref_rejected_log_prob = compute_log_prob(logits=ref_rejected_out, labels=rejected_labels)
 
-        # compute dpo loss tensor
-        loss_ten, chosen_rewards, rejected_rewards = dpo_loss_tensor(
-            policy_chosen_log_prob=policy_chosen_log_prob,
-            policy_rejected_log_prob=policy_rejected_log_prob,
-            ref_chosen_log_prob=ref_chosen_log_prob,
-            ref_rejected_log_prob=ref_rejected_log_prob,
-            beta=float(self.beta),
-        )
+        mode = str(getattr(self.dynamic_cfg, "mode_loss", "risk")).lower()
 
-        loss = loss_ten.mean()
+        if mode == "beta_dpo":
+            gap = compute_beta_dpo_margin(
+                policy_chosen_log_prob,
+                policy_rejected_log_prob,
+                ref_chosen_log_prob,
+                ref_rejected_log_prob,
+            )
+
+            self.bdpo_M0, self.bdpo_sigma, _, _ = compute_beta_dpo_threshold(
+                M_0=self.bdpo_M0,
+                sigma=self.bdpo_sigma,
+                m=float(self.dynamic_cfg.bdpo_m),
+                gap=gap,
+                eps=float(self.dynamic_cfg.bdpo_eps),
+            )
+
+            mask, selected_idx, _ = beta_dpo_data_filter(
+                gap=gap,
+                M_0=self.bdpo_M0,
+                sigma=self.bdpo_sigma,
+                rho=float(self.dynamic_cfg.bdpo_rho),
+                eps=float(self.dynamic_cfg.bdpo_eps),
+            )
+
+            gap_selected_mean = gap[selected_idx].mean()
+            beta_used = beta_dpo_beta_update(
+                beta_0=float(self.dynamic_cfg.beta_0),
+                alpha=float(self.dynamic_cfg.bdpo_a),
+                gap_selected=gap_selected_mean,
+                threshold=self.bdpo_M0,
+                min_beta=float(self.dynamic_cfg.bdpo_min_beta),
+            )
+
+            loss_ten, chosen_rewards, rejected_rewards = beta_dpo_dpo_loss(
+                policy_chosen_log_prob,
+                policy_rejected_log_prob,
+                ref_chosen_log_prob,
+                ref_rejected_log_prob,
+                beta_used=beta_used,
+            )
+
+            denom = mask.sum().clamp_min(1.0)
+            loss = (loss_ten * mask).sum() / denom
+        else:
+            # compute dpo loss tensor
+            loss_ten, chosen_rewards, rejected_rewards = dpo_loss_tensor(
+                policy_chosen_log_prob=policy_chosen_log_prob,
+                policy_rejected_log_prob=policy_rejected_log_prob,
+                ref_chosen_log_prob=ref_chosen_log_prob,
+                ref_rejected_log_prob=ref_rejected_log_prob,
+                beta=float(self.beta),
+            )
+
+            loss = loss_ten.mean()
 
         # margin
         model_margin = margin_compute(
@@ -244,55 +311,58 @@ class DynamicBetaDPOTrainer(DPOTrainer):
 
         # dynamic beta adjustment
         with torch.no_grad():
-            self._warmup_count += 1
+            if mode != "beta_dpo":
+                self._warmup_count += 1
 
-            if (not self._warmup_done) and (self._warmup_count <= self.dynamic_cfg.warmup_steps):
-                self.warmup_threshold.update(model_margin)
+                if (not self._warmup_done) and (
+                    self._warmup_count <= self.dynamic_cfg.warmup_steps
+                ):
+                    self.warmup_threshold.update(model_margin)
 
-                if self._warmup_count == self.dynamic_cfg.warmup_steps:
-                    tau0 = self.warmup_threshold.finalize()
-                    self._ema = EMAUpdate(
-                        tau_0=tau0,
-                        q=1.0 - float(self.dynamic_cfg.delta),
-                        momentum=float(self.dynamic_cfg.momentum),
-                    )
-                    self.tau = float(tau0)
-                    self._warmup_done = True
+                    if self._warmup_count == self.dynamic_cfg.warmup_steps:
+                        tau0 = self.warmup_threshold.finalize()
+                        self._ema = EMAUpdate(
+                            tau_0=tau0,
+                            q=1.0 - float(self.dynamic_cfg.delta),
+                            momentum=float(self.dynamic_cfg.momentum),
+                        )
+                        self.tau = float(tau0)
+                        self._warmup_done = True
 
-            else:
-                # update tau by EMA of batch quantile
-                if self._ema is not None:
-                    self.tau = float(self._ema.update_tau(model_margin))
-
-                # compute p_hat + risk
-                if self.tau is not None:
-                    p_hat = empirical_over_threshold_proportion(model_margin, self.tau)
                 else:
-                    p_hat = 0.0
+                    # update tau by EMA of batch quantile
+                    if self._ema is not None:
+                        self.tau = float(self._ema.update_tau(model_margin))
 
-                fail = risk_test(p_hat, float(self.dynamic_cfg.delta))
+                    # compute p_hat + risk
+                    if self.tau is not None:
+                        p_hat = empirical_over_threshold_proportion(model_margin, self.tau)
+                    else:
+                        p_hat = 0.0
 
-                # update beta (always update; fail can be used to gate if you want)
-                beta_new, u_k, s_k, alpha = update_beta(
-                    beta=float(self.beta),
-                    p_hat=float(p_hat),
-                    delta=float(self.dynamic_cfg.delta),
-                    alpha=float(self.dynamic_cfg.alpha),
-                    n=int(model_margin.numel()),
-                    gamma=float(self.dynamic_cfg.gamma),
-                    beta_min=float(self.dynamic_cfg.beta_min),
-                    beta_max=float(self.dynamic_cfg.beta_max),
-                )
-                self.beta = float(beta_new)
+                    fail = risk_test(p_hat, float(self.dynamic_cfg.delta))
 
-                self._last_stats = {
-                    "p_hat": float(p_hat),
-                    "tau": float(self.tau) if self.tau is not None else None,
-                    "fail": int(fail),
-                    "u_k": float(u_k),
-                    "s_k": float(s_k),
-                    "alpha": float(alpha),
-                }
+                    # update beta (always update; fail can be used to gate if you want)
+                    beta_new, u_k, s_k, alpha = update_beta(
+                        beta=float(self.beta),
+                        p_hat=float(p_hat),
+                        delta=float(self.dynamic_cfg.delta),
+                        alpha=float(self.dynamic_cfg.alpha),
+                        n=int(model_margin.numel()),
+                        gamma=float(self.dynamic_cfg.gamma),
+                        beta_min=float(self.dynamic_cfg.beta_min),
+                        beta_max=float(self.dynamic_cfg.beta_max),
+                    )
+                    self.beta = float(beta_new)
+
+                    self._last_stats = {
+                        "p_hat": float(p_hat),
+                        "tau": float(self.tau) if self.tau is not None else None,
+                        "fail": int(fail),
+                        "u_k": float(u_k),
+                        "s_k": float(s_k),
+                        "alpha": float(alpha),
+                    }
 
             # margin logging (optional)
             self._maybe_log_margins(model_margin)
@@ -303,6 +373,15 @@ class DynamicBetaDPOTrainer(DPOTrainer):
                 "dpo/margin_mean": float(model_margin.mean().item()),
                 "dpo/loss": float(loss.detach().float().item()),
             }
+            if mode == "beta_dpo":
+                log_payload.update(
+                    {
+                        "beta_dpo/beta_used": float(beta_used.item()),
+                        "beta_dpo/M0": float(self.bdpo_M0.item()),
+                        "beta_dpo/sigma": float(self.bdpo_sigma.item()),
+                        "beta_dpo/keep_ratio": float(mask.mean().item()),
+                    }
+                )
             if self._warmup_done and self._last_stats:
                 log_payload.update(
                     {

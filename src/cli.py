@@ -95,6 +95,7 @@ def main_dpo() -> None:
     risk = config["risk_test"]
     beta_up = config["beta_update"]
     margin_log = config["margin_log"]
+    beta_dpo_cfg = config.get("beta_dpo", {})
 
     dyn_cfg = DynamicBetaDPOConfig(
         delta=float(risk["delta"]),
@@ -109,6 +110,12 @@ def main_dpo() -> None:
         log_dir=str(margin_log["log_dir"]),
         jsonl_sample_size=int(margin_log["jsonl_sample_size"]),
         save_per_rank=bool(margin_log["save_per_rank"]),
+        mode_loss=str(beta_dpo_cfg.get("mode_loss", "risk")),
+        bdpo_m=float(beta_dpo_cfg.get("bdpo_m", 0.9)),
+        bdpo_rho=float(beta_dpo_cfg.get("rho", 0.8)),
+        bdpo_a=float(beta_dpo_cfg.get("alpha", 0.5)),
+        bdpo_min_beta=float(beta_dpo_cfg.get("min_beta", 1e-3)),
+        bdpo_eps=float(beta_dpo_cfg.get("eps", 1e-6)),
     )
 
     # optional wandb init
