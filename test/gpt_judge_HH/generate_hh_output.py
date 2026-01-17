@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import random
 import re
 from pathlib import Path
 from typing import Any, Iterable, List
@@ -212,11 +211,6 @@ def generate_model_outputs(
         repo_id=dataset_repo, split=dataset_split
     )
     if max_instances is not None:
-        if seed is not None:
-            order_rng = random.Random(seed)
-            order_rng.shuffle(instructions)
-        else:
-            random.shuffle(instructions)
         instructions = instructions[:max_instances]
 
     outputs = []
@@ -390,7 +384,7 @@ def main() -> None:
         output_file=(
             args.output_file
             or generation_cfg.get(
-                "output_file", "test/alpacaeval/outputs/hh_model_outputs.json"
+                "output_file", "test/gpt_judge_HH/outputs/hh_model_outputs.json"
             )
         ),
         max_new_tokens=(

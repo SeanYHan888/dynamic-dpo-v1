@@ -10,6 +10,7 @@ import json
 import os
 import random
 import re
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -157,6 +158,41 @@ def _summarize(counts: dict[str, dict[str, int]]) -> dict[str, Any]:
             "win_rate": win_rate,
         }
     return summary
+
+
+def _iter_json_objects(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        return []
+    decoder = json.JSONDecoder()
+    idx = 0
+    length = len(text)
+    objects: list[dict[str, Any]] = []
+    while idx < length:
+        while idx < length and text[idx].isspace():
+            idx += 1
+        if idx >= length:
+            break
+        try:
+            obj, next_idx = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError:
+            break
+        if isinstance(obj, dict):
+            objects.append(obj)
+        idx = next_idx
+    return objects
+
+
+def _clear_results_dir(path: Path) -> None:
+    if not path.exists():
+        return
+    for entry in path.iterdir():
+        if entry.is_dir():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
 
 
 def _seed_for_pair(
@@ -375,6 +411,7 @@ def main() -> None:
         args.summary_file
         or output_cfg.get("summary_file", "test/gpt_judge/results/summary.json")
     )
+    _clear_results_dir(results_path.parent)
 
     model_name = args.model or oracle_cfg.get("model", "gpt-4o-2024-08-06")
     temperature = oracle_cfg.get("temperature", 0.0)
@@ -399,41 +436,27 @@ def main() -> None:
     )
     dataset_split = args.dataset_split or generation_cfg.get("dataset_split", "test")
     chosen_map = _load_hh_chosen_map(dataset_repo, dataset_split)
-
+    
     instructions = _intersection_keys(sft_map, og_dpo_map, dpo_map, chosen_map)
     if max_examples is not None:
         instructions = instructions[:max_examples]
-    if instructions:
-        if seed is not None:
-            order_rng = random.Random(seed)
-            order_rng.shuffle(instructions)
-        else:
-            random.shuffle(instructions)
 
     seen = set()
     model_maps = {"sft": sft_map, "og_dpo": og_dpo_map, "dpo": dpo_map}
     model_keys = list(model_maps.keys())
     counts = _init_counts(model_keys)
     if args.resume and results_path.exists():
-        with results_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                instruction = row.get("instruction")
-                model_key = row.get("model_key")
-                if not instruction or not model_key:
-                    continue
-                pair_key = (instruction, model_key)
-                if pair_key in seen:
-                    continue
-                seen.add(pair_key)
-                winner_key = row.get("winner_key") or row.get("winner")
-                _record_count(counts, model_key, winner_key)
+        for row in _iter_json_objects(results_path):
+            instruction = row.get("instruction")
+            model_key = row.get("model_key")
+            if not instruction or not model_key:
+                continue
+            pair_key = (instruction, model_key)
+            if pair_key in seen:
+                continue
+            seen.add(pair_key)
+            winner_key = row.get("winner_key") or row.get("winner")
+            _record_count(counts, model_key, winner_key)
 
     client = OpenAI()
 
@@ -507,8 +530,9 @@ def main() -> None:
                         "usage": usage,
                     },
                     ensure_ascii=False,
+                    indent=2,
                 )
-                + "\n"
+                + "\n\n"
             )
             out_f.flush()
 

@@ -37,3 +37,5 @@ test/gpt_judge/data/
 test/gpt_judge/outputs/
 test/gpt_judge/results/
 test/gpt_judge/visualizations/
+test/gpt_judge_HH/outputs/
+test/gpt_judge_HH/results/
