@@ -18,7 +18,8 @@ models:
   standard_dpo: "jackf857/llama32-1b-dpo-hh-rollout"
   # beta_dpo: "path/to/beta_dpo"
   dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh"
-
+  no_instruction_sft: "W-61/hh-llama32-1b-sft"
+  
 # Generation Parameters
 generation:
   max_new_tokens: 128
