@@ -176,6 +176,7 @@ def _resolve_eos_token_id(tokenizer: AutoTokenizer) -> int | list[int] | None:
 def generate_model_outputs(
     model_name: str,
     output_file: str,
+    generator_name: str | None = None,
     max_new_tokens: int = 512,
     batch_size: int = 1,
     device: str = "cuda",
@@ -189,6 +190,7 @@ def generate_model_outputs(
     apply_chat_template: bool = True,
 ) -> None:
     """Generate outputs for AlpacaEval prompts using the specified model."""
+    resolved_generator_name = generator_name or model_name
     resolved_device = _resolve_device(device)
     dtype = _resolve_dtype(resolved_device)
 
@@ -271,7 +273,7 @@ def generate_model_outputs(
                 {
                     "instruction": item["instruction"],
                     "output": text,
-                    "generator": model_name,
+                    "generator": resolved_generator_name,
                 }
             )
         progress.update(len(batch))
@@ -297,6 +299,15 @@ def main() -> None:
         type=str,
         default="test/alpacaeval/outputs/model_outputs.json",
         help="Path to save the outputs",
+    )
+    parser.add_argument(
+        "--generator_name",
+        type=str,
+        default=None,
+        help=(
+            "Optional display name written into the `generator` field "
+            "(defaults to --model_name)."
+        ),
     )
     parser.add_argument(
         "--max_new_tokens",
@@ -370,6 +381,7 @@ def main() -> None:
     generate_model_outputs(
         model_name=args.model_name,
         output_file=args.output_file,
+        generator_name=args.generator_name,
         max_new_tokens=args.max_new_tokens,
         batch_size=args.batch_size,
         device=args.device,

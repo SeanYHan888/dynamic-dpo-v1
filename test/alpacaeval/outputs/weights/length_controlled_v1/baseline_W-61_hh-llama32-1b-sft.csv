@@ -1,0 +1,4 @@
+,np.tanh(std_delta_len),instruction_difficulty,not_gamed_baseline.astype(float)
+jackf857_llama32-1b-dynamic-dpo-hh-rollout,-1.1935566270138436,0.0598298047296175,0.1167913575221772
+jackf857_llama32-1b-dpo-hh-rollout,-1.1965150945276812,0.0704878320885589,0.0911347561732062
+W-61_llama32-1b-beta-dpo-hh-rollout,-1.4019995947583230,0.1314341361027051,0.1319650631049952

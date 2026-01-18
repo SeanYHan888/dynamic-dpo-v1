@@ -1,0 +1,2 @@
+,win_rate,standard_error,mode,avg_length,n_wins,n_wins_base,n_draws,n_total,discrete_win_rate,length_controlled_winrate,lc_standard_error
+beta_dpo_hh,50.62814070351759,1.7687157780092622,community,97,401,391,4,796,50.62814070351759,53.07101431421678,0.16873519083890834
