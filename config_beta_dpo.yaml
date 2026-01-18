@@ -8,7 +8,7 @@ precision: bf16
 dataset:
   dataset_name: jackf857/hh-llama32-1b-rollout-judged
   generated_data: true
-  chat_template: true
+  chat_template: False
   subset: train[:30%]
   val_ratio: 0.1
   seed: 42
@@ -49,10 +49,10 @@ beta_dpo:
   alpha: 0.5
   
   # Minimum allowed beta value (clipping)
-  min_beta: 0.001
+  min_beta: 1e-3
   
   # Numerical stability constant
-  eps: 1e-3
+  eps: 1e-6
   
   # Margin logging settings
   log_margins: true

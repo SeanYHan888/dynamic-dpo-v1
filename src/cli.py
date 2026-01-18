@@ -4,20 +4,19 @@ import argparse
 import os
 
 from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import DPOConfig
 
 from .config.loader import load_yaml
 from .data.hh_dataset import (
+    apply_chat_template_to_dataset,
     build_HH_dataset,
     load_generated_dataset_from_config,
-    apply_chat_template_to_dataset,
 )
-from .trainers.dynamic_beta_dpo import DynamicBetaDPOTrainer, DynamicBetaDPOConfig
-from .trainers.beta_dpo import BetaDPOTrainer, BetaDPOConfig
+from .trainers.beta_dpo import BetaDPOConfig, BetaDPOTrainer
+from .trainers.dynamic_beta_dpo import DynamicBetaDPOConfig, DynamicBetaDPOTrainer
 from .trainers.sft_trainer import run_sft_training
 from .utils.debug import log_dpo_debug_samples
-
 
 
 def main_dpo():
@@ -47,12 +46,12 @@ def main_dpo():
     dataset_name = config["dataset"]["dataset_name"]
     dataset_cfg = config["dataset"]
     raw_ds = load_dataset(dataset_name, split=dataset_cfg["subset"])
-    
+
     if bool(dataset_cfg.get("generated_data", False)):
         hh_ds = load_generated_dataset_from_config(config)
     else:
         hh_ds = build_HH_dataset(raw_ds)
-    
+
     if bool(dataset_cfg.get("chat_template", False)):
         hh_ds = apply_chat_template_to_dataset(hh_ds, tok)
 
@@ -62,7 +61,7 @@ def main_dpo():
     split = hh_ds.train_test_split(test_size=val_ratio, seed=seed)
     train_ds = split["train"]
     eval_ds = split["test"]
-    
+
     debug_train_ds = train_ds
     try:
         debug_train_ds = train_ds.with_format("python")
@@ -120,9 +119,15 @@ def main_dpo():
     wandb_project = dpo_train_args.get("wandb_project") or dpo_train_args.get("report")
     if wandb_project:
         import torch.distributed as dist
-        is_main = (not dist.is_available()) or (not dist.is_initialized()) or (dist.get_rank() == 0)
+
+        is_main = (
+            (not dist.is_available())
+            or (not dist.is_initialized())
+            or (dist.get_rank() == 0)
+        )
         if is_main:
             import wandb
+
             wandb.init(
                 project=str(wandb_project),
                 name=dpo_train_args["run_name"],
@@ -159,14 +164,25 @@ def main_sft():
 
     # Interactive hub push (main process only)
     import torch.distributed as dist
-    is_main = (not dist.is_available()) or (not dist.is_initialized()) or (dist.get_rank() == 0)
+
+    is_main = (
+        (not dist.is_available())
+        or (not dist.is_initialized())
+        or (dist.get_rank() == 0)
+    )
 
     if is_main:
         sft_cfg = config.get("sft_training", {})
         hub_model_id = sft_cfg.get("hub_model_id")
         if hub_model_id:
             try:
-                push = input(f"\nDo you want to push the model to the Hub ({hub_model_id})? [y/N]: ").strip().lower()
+                push = (
+                    input(
+                        f"\nDo you want to push the model to the Hub ({hub_model_id})? [y/N]: "
+                    )
+                    .strip()
+                    .lower()
+                )
                 if push == "y":
                     print(f"Pushing model to {hub_model_id}...")
                     trainer.push_to_hub()
@@ -262,9 +278,15 @@ def main_beta_dpo():
     wandb_project = dpo_train_args.get("wandb_project") or dpo_train_args.get("report")
     if wandb_project:
         import torch.distributed as dist
-        is_main = (not dist.is_available()) or (not dist.is_initialized()) or (dist.get_rank() == 0)
+
+        is_main = (
+            (not dist.is_available())
+            or (not dist.is_initialized())
+            or (dist.get_rank() == 0)
+        )
         if is_main:
             import wandb
+
             wandb.init(
                 project=str(wandb_project),
                 name=dpo_train_args.get("run_name", "beta-dpo"),
@@ -288,12 +310,15 @@ def main_beta_dpo():
     hub_model_id = dpo_train_args.get("hub_model_id")
     if hub_model_id:
         import torch.distributed as dist
-        is_main = (not dist.is_available()) or (not dist.is_initialized()) or (dist.get_rank() == 0)
+
+        is_main = (
+            (not dist.is_available())
+            or (not dist.is_initialized())
+            or (dist.get_rank() == 0)
+        )
         if is_main:
             print(f"\nPushing model to HuggingFace Hub: {hub_model_id}")
             trainer.push_to_hub(repo_id=hub_model_id)
-            print(f"Model uploaded successfully to: https://huggingface.co/{hub_model_id}")
-
-
-if __name__ == "__main__":
-    main_dpo()
+            print(
+                f"Model uploaded successfully to: https://huggingface.co/{hub_model_id}"
+            )
