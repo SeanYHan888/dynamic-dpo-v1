@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any, Iterable, List
 
@@ -16,6 +17,12 @@ import yaml
 from datasets import load_dataset
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from util import LLAMA3_CHAT_TEMPLATE
 
 TAG_RE = re.compile(r"\n\n(Human|Assistant): ?")
 
@@ -170,6 +177,13 @@ def _resolve_eos_token_id(tokenizer: AutoTokenizer) -> int | list[int] | None:
     return eos_token_ids
 
 
+def _supports_llama3_chat(tokenizer: AutoTokenizer) -> bool:
+    for token in ("<|start_header_id|>", "<|end_header_id|>", "<|eot_id|>"):
+        if _lookup_token_id(tokenizer, token) is None:
+            return False
+    return True
+
+
 def generate_model_outputs(
     model_name: str,
     output_file: str,
@@ -193,8 +207,15 @@ def generate_model_outputs(
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     tokenizer.padding_side = "left"
+    tokenizer.truncation_side = "left"
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
+
+    if apply_chat_template and not tokenizer.chat_template:
+        if _supports_llama3_chat(tokenizer):
+            tokenizer.chat_template = LLAMA3_CHAT_TEMPLATE
+        else:
+            apply_chat_template = False
 
     eos_token_id = _resolve_eos_token_id(tokenizer)
 

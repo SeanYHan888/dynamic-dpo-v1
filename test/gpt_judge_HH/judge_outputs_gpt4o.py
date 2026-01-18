@@ -1,5 +1,5 @@
 """
-Pairwise judge model outputs against HH chosen answers with GPT-4o.
+Pairwise judge model outputs against each other with GPT-4o.
 """
 
 from __future__ import annotations
@@ -22,15 +22,6 @@ try:
     from openai import OpenAI
 except ImportError as exc:
     raise RuntimeError("openai package is required to run this script.") from exc
-
-try:
-    from datasets import load_dataset
-except ImportError as exc:
-    raise RuntimeError(
-        "datasets package is required to load HH chosen answers."
-    ) from exc
-
-TAG_RE = re.compile(r"\n\n(Human|Assistant): ?")
 
 
 def _load_config(path: str | Path) -> dict[str, Any]:
@@ -133,13 +124,15 @@ def _init_counts(model_keys: list[str]) -> dict[str, dict[str, int]]:
 
 def _record_count(
     counts: dict[str, dict[str, int]],
-    model_key: str,
+    pair_key: str,
     winner_key: str | None,
+    left_key: str,
+    right_key: str,
 ) -> None:
-    stats = counts.setdefault(model_key, {"wins": 0, "losses": 0, "ties": 0})
-    if winner_key == model_key:
+    stats = counts.setdefault(pair_key, {"wins": 0, "losses": 0, "ties": 0})
+    if winner_key == left_key:
         stats["wins"] += 1
-    elif winner_key == "chosen":
+    elif winner_key == right_key:
         stats["losses"] += 1
     else:
         stats["ties"] += 1
@@ -196,14 +189,23 @@ def _clear_results_dir(path: Path) -> None:
 
 
 def _seed_for_pair(
-    seed: int | None, instruction: str, model_key: str
+    seed: int | None, instruction: str, pair_key: str
 ) -> int | None:
     if seed is None:
         return None
     digest = hashlib.sha256(
-        f"{seed}-{model_key}-{instruction}".encode("utf-8")
+        f"{seed}-{pair_key}-{instruction}".encode("utf-8")
     ).digest()
     return int.from_bytes(digest[:8], "big")
+
+
+def _shuffle_pair_outputs(
+    outputs: list[tuple[str, str]], rng: random.Random | None
+) -> None:
+    if rng is None:
+        random.SystemRandom().shuffle(outputs)
+        return
+    rng.shuffle(outputs)
 
 
 def _call_gpt4_oracle(
@@ -253,65 +255,14 @@ def _call_gpt4_oracle(
     raise RuntimeError(f"OpenAI API failed after {max_retries} retries") from last_error
 
 
-def _strip_one_leading_newline(text: str) -> str:
-    return text[1:] if text.startswith("\n") else text
-
-
-def _parse_hh_to_messages(text: str) -> list[dict[str, str]]:
-    text = str(text).replace("\r\n", "\n").replace("\r", "\n")
-    if not text.startswith("\n\nHuman:") and not text.startswith("\n\nAssistant:"):
-        text = "\n\n" + text
-
-    parts = TAG_RE.split(text)
-    messages: list[dict[str, str]] = []
-    for i in range(1, len(parts), 2):
-        role_tag = parts[i]
-        content = parts[i + 1] if i + 1 < len(parts) else ""
-        content = _strip_one_leading_newline(content).strip()
-        if not content:
-            continue
-        role = "user" if role_tag == "Human" else "assistant"
-        messages.append({"role": role, "content": content})
-    return messages
-
-
-def _extract_single_turn_pair(text: str) -> tuple[str, str] | None:
-    messages = _parse_hh_to_messages(text)
-    if len(messages) != 2:
-        return None
-    if messages[0]["role"] != "user" or messages[1]["role"] != "assistant":
-        return None
-    instruction = messages[0]["content"]
-    response = messages[1]["content"]
-    if not instruction or not response:
-        return None
-    return instruction, response
-
-
-def _load_hh_chosen_map(repo_id: str, split: str) -> dict[str, str]:
-    dataset = load_dataset(repo_id, split=split)
-    chosen_map: dict[str, str] = {}
-    for row in dataset:
-        text = row.get("chosen") or row.get("prompt") or row.get("text")
-        if text is None:
-            continue
-        pair = _extract_single_turn_pair(text)
-        if pair is None:
-            continue
-        instruction, chosen = pair
-        if instruction not in chosen_map:
-            chosen_map[instruction] = chosen
-    return chosen_map
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Use GPT-4o to judge model outputs vs HH chosen answers."
+        description="Use GPT-4o to judge pairwise model outputs."
     )
     parser.add_argument(
         "--config",
         type=str,
-        default="test/gpt_judge/config_evaluation.yaml",
+        default="test/gpt_judge_HH/config_evaluation.yaml",
         help="Path to evaluation config YAML.",
     )
     parser.add_argument(
@@ -333,10 +284,23 @@ def main() -> None:
         help="Override path to DPO outputs JSON.",
     )
     parser.add_argument(
+        "--beta_dpo",
+        type=str,
+        default=None,
+        help="Override path to beta DPO outputs JSON.",
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default=None,
         help="Override GPT-4o model name for judging.",
+    )
+    parser.add_argument(
+        "--pair",
+        type=str,
+        default="all",
+        choices=("all", "dpo_vs_sft", "og_dpo_vs_sft", "beta_dpo_vs_sft"),
+        help="Run only a single pairwise comparison or all.",
     )
     parser.add_argument(
         "--max_instances",
@@ -356,25 +320,25 @@ def main() -> None:
         "--results_file",
         type=str,
         default=None,
-        help="Override path to write per-example judgments.",
+        help="Override base path to write per-example judgments (pair key suffix is added).",
+    )
+    parser.add_argument(
+        "--results_file_dpo_vs_sft",
+        type=str,
+        default=None,
+        help="Override path to write dpo_vs_sft judgments JSONL.",
+    )
+    parser.add_argument(
+        "--results_file_og_dpo_vs_sft",
+        type=str,
+        default=None,
+        help="Override path to write og_dpo_vs_sft judgments JSONL.",
     )
     parser.add_argument(
         "--summary_file",
         type=str,
         default=None,
         help="Override path to write the summary JSON.",
-    )
-    parser.add_argument(
-        "--dataset_repo",
-        type=str,
-        default=None,
-        help="HuggingFace dataset repo ID for HH chosen answers.",
-    )
-    parser.add_argument(
-        "--dataset_split",
-        type=str,
-        default=None,
-        help="Dataset split to load chosen answers from.",
     )
     parser.add_argument(
         "--resume",
@@ -391,7 +355,6 @@ def main() -> None:
     oracle_cfg = config.get("gpt4_oracle", {})
     inputs_cfg = config.get("inputs", {})
     output_cfg = config.get("output", {})
-    generation_cfg = config.get("generation", {})
 
     prompt_template = oracle_cfg.get("prompt_template")
     if not prompt_template:
@@ -402,16 +365,20 @@ def main() -> None:
     dpo_path = args.dpo or inputs_cfg.get("dpo")
     if not sft_path or not og_dpo_path or not dpo_path:
         raise ValueError("inputs.sft, inputs.og_dpo, and inputs.dpo must be set.")
+    beta_dpo_path = args.beta_dpo or inputs_cfg.get("beta_dpo")
+    if args.pair == "beta_dpo_vs_sft" and not beta_dpo_path:
+        raise ValueError("inputs.beta_dpo must be set for beta_dpo_vs_sft.")
 
-    results_path = Path(
+    results_base_path = Path(
         args.results_file
-        or output_cfg.get("results_file", "test/gpt_judge/results/gpt4o_judgments.jsonl")
+        or output_cfg.get(
+            "results_file", "test/gpt_judge_HH/results/gpt4o_judgments.jsonl"
+        )
     )
     summary_path = Path(
         args.summary_file
-        or output_cfg.get("summary_file", "test/gpt_judge/results/summary.json")
+        or output_cfg.get("summary_file", "test/gpt_judge_HH/results/summary.json")
     )
-    _clear_results_dir(results_path.parent)
 
     model_name = args.model or oracle_cfg.get("model", "gpt-4o-2024-08-06")
     temperature = oracle_cfg.get("temperature", 0.0)
@@ -431,118 +398,184 @@ def main() -> None:
     sft_map = _load_outputs(Path(sft_path))
     og_dpo_map = _load_outputs(Path(og_dpo_path))
     dpo_map = _load_outputs(Path(dpo_path))
-    dataset_repo = args.dataset_repo or generation_cfg.get(
-        "dataset_repo", "Anthropic/hh-rlhf"
+    beta_dpo_map = (
+        _load_outputs(Path(beta_dpo_path)) if beta_dpo_path else None
     )
-    dataset_split = args.dataset_split or generation_cfg.get("dataset_split", "test")
-    chosen_map = _load_hh_chosen_map(dataset_repo, dataset_split)
-    
-    instructions = _intersection_keys(sft_map, og_dpo_map, dpo_map, chosen_map)
+
+    instructions = _intersection_keys(sft_map, og_dpo_map, dpo_map)
+    shuffle_instructions = oracle_cfg.get("shuffle_instructions", False)
+    if shuffle_instructions:
+        rng = random.Random(seed) if seed is not None else random.Random()
+        rng.shuffle(instructions)
     if max_examples is not None:
         instructions = instructions[:max_examples]
 
     seen = set()
     model_maps = {"sft": sft_map, "og_dpo": og_dpo_map, "dpo": dpo_map}
-    model_keys = list(model_maps.keys())
-    counts = _init_counts(model_keys)
-    if args.resume and results_path.exists():
-        for row in _iter_json_objects(results_path):
-            instruction = row.get("instruction")
-            model_key = row.get("model_key")
-            if not instruction or not model_key:
+    if beta_dpo_map is not None:
+        model_maps["beta_dpo"] = beta_dpo_map
+    pairings = [("dpo", "sft"), ("og_dpo", "sft")]
+    if beta_dpo_map is not None or args.pair == "beta_dpo_vs_sft":
+        pairings.append(("beta_dpo", "sft"))
+    pair_map = {f"{left}_vs_{right}": (left, right) for left, right in pairings}
+    pair_keys = list(pair_map.keys())
+    if args.pair != "all":
+        pair_keys = [args.pair]
+    counts = _init_counts(pair_keys)
+    results_files_cfg = output_cfg.get("results_files")
+    results_paths: dict[str, Path] = {}
+    for pair_key in pair_keys:
+        cli_override: str | None = None
+        if pair_key == "dpo_vs_sft":
+            cli_override = args.results_file_dpo_vs_sft
+        elif pair_key == "og_dpo_vs_sft":
+            cli_override = args.results_file_og_dpo_vs_sft
+
+        cfg_override: str | None = None
+        if isinstance(results_files_cfg, dict):
+            cfg_value = results_files_cfg.get(pair_key)
+            if isinstance(cfg_value, str) and cfg_value:
+                cfg_override = cfg_value
+
+        resolved = cli_override or cfg_override
+        results_paths[pair_key] = (
+            Path(resolved)
+            if resolved
+            else results_base_path.with_name(
+                f"{results_base_path.stem}_{pair_key}{results_base_path.suffix}"
+            )
+        )
+
+    if args.resume:
+        for pair_key, pair_results_path in results_paths.items():
+            if not pair_results_path.exists():
                 continue
-            pair_key = (instruction, model_key)
-            if pair_key in seen:
-                continue
-            seen.add(pair_key)
-            winner_key = row.get("winner_key") or row.get("winner")
-            _record_count(counts, model_key, winner_key)
+            for row in _iter_json_objects(pair_results_path):
+                instruction = row.get("instruction")
+                if not instruction:
+                    continue
+                row_pair_key = row.get("model_key")
+                if row_pair_key and row_pair_key != pair_key:
+                    continue
+                seen_key = (instruction, pair_key)
+                if seen_key in seen:
+                    continue
+                seen.add(seen_key)
+                winner_key = row.get("winner_key") or row.get("winner")
+                left_key, right_key = pair_map[pair_key]
+                _record_count(counts, pair_key, winner_key, left_key, right_key)
 
     client = OpenAI()
 
-    results_path.parent.mkdir(parents=True, exist_ok=True)
     total = sum(
         stats["wins"] + stats["losses"] + stats["ties"]
         for stats in counts.values()
     )
-    pending_pairs = [
-        (instruction, model_key)
-        for instruction in instructions
-        for model_key in model_keys
-        if (instruction, model_key) not in seen
-    ]
+    output_mode = "a" if args.resume else "w"
 
-    with results_path.open("a", encoding="utf-8") as out_f:
-        for instruction, model_key in tqdm(
-            pending_pairs, desc="Judging", unit="comparisons"
+    for pair_key in pair_keys:
+        pair_results_path = results_paths[pair_key]
+        pair_results_path.parent.mkdir(parents=True, exist_ok=True)
+        prompt_log_path = (
+            pair_results_path.parent / f"gpt4o_prompts_log_{pair_key}.jsonl"
+        )
+
+        left_key, right_key = pair_map[pair_key]
+        pending_instructions = [
+            instruction
+            for instruction in instructions
+            if (instruction, pair_key) not in seen
+            and instruction in model_maps[left_key]
+            and instruction in model_maps[right_key]
+        ]
+
+        with (
+            pair_results_path.open(output_mode, encoding="utf-8") as out_f,
+            prompt_log_path.open(output_mode, encoding="utf-8") as prompt_f,
         ):
-            outputs = [
-                (model_key, model_maps[model_key][instruction]),
-                ("chosen", chosen_map[instruction]),
-            ]
-            instruction_seed = _seed_for_pair(seed, instruction, model_key)
-            rng = (
-                random.Random(instruction_seed)
-                if instruction_seed is not None
-                else random.Random()
-            )
-            rng.shuffle(outputs)
-            label_map = {"A": outputs[0][0], "B": outputs[1][0]}
-            labeled_outputs = {
-                "A": outputs[0][1],
-                "B": outputs[1][1],
-            }
+            for instruction in tqdm(
+                pending_instructions,
+                desc=f"Judging {pair_key}",
+                unit="examples",
+            ):
+                outputs = [
+                    (left_key, model_maps[left_key][instruction]),
+                    (right_key, model_maps[right_key][instruction]),
+                ]
+                pair_seed = _seed_for_pair(seed, instruction, pair_key)
+                rng = random.Random(pair_seed) if pair_seed is not None else None
+                _shuffle_pair_outputs(outputs, rng=rng)
+                label_map = {"A": outputs[0][0], "B": outputs[1][0]}
+                labeled_outputs = {
+                    "A": outputs[0][1],
+                    "B": outputs[1][1],
+                }
 
-            prompt = _build_prompt(prompt_template, instruction, labeled_outputs)
-            content, usage = _call_gpt4_oracle(
-                client=client,
-                prompt=prompt,
-                model=model_name,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                max_retries=max_retries,
-                initial_backoff=initial_backoff,
-                max_backoff=max_backoff,
-                system_prompt=system_prompt,
-            )
-            comparison, winner = _parse_response(content)
-            if winner is None:
-                winner = "TIE"
-
-            winner_key = label_map.get(winner)
-            if winner_key is None:
-                winner = "TIE"
-                winner_key = "TIE"
-            _record_count(counts, model_key, winner_key)
-            total += 1
-
-            out_f.write(
-                json.dumps(
-                    {
-                        "instruction": instruction,
-                        "model_key": model_key,
-                        "comparison": comparison,
-                        "winner": winner,
-                        "winner_key": winner_key,
-                        "labels": label_map,
-                        "model": model_name,
-                        "raw_response": content,
-                        "usage": usage,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
+                prompt = _build_prompt(prompt_template, instruction, labeled_outputs)
+                prompt_f.write(
+                    json.dumps(
+                        {
+                            "instruction": instruction,
+                            "model_key": pair_key,
+                            "labels": label_map,
+                            "prompt": prompt,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n\n"
                 )
-                + "\n\n"
-            )
-            out_f.flush()
+                prompt_f.flush()
+                content, usage = _call_gpt4_oracle(
+                    client=client,
+                    prompt=prompt,
+                    model=model_name,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    max_retries=max_retries,
+                    initial_backoff=initial_backoff,
+                    max_backoff=max_backoff,
+                    system_prompt=system_prompt,
+                )
+                comparison, winner = _parse_response(content)
+                if winner is None:
+                    winner = "TIE"
+
+                winner_key = label_map.get(winner)
+                if winner_key is None:
+                    winner = "TIE"
+                    winner_key = "TIE"
+                _record_count(counts, pair_key, winner_key, left_key, right_key)
+                total += 1
+                seen.add((instruction, pair_key))
+
+                out_f.write(
+                    json.dumps(
+                        {
+                            "instruction": instruction,
+                            "model_key": pair_key,
+                            "comparison": comparison,
+                            "winner": winner,
+                            "winner_key": winner_key,
+                            "labels": label_map,
+                            "model": model_name,
+                            "raw_response": content,
+                            "usage": usage,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n\n"
+                )
+                out_f.flush()
 
     summary = _summarize(counts)
     summary["judge_model"] = model_name
-    summary["dataset_repo"] = dataset_repo
-    summary["dataset_split"] = dataset_split
+    summary["results_files"] = {key: str(path) for key, path in results_paths.items()}
     summary_path.parent.mkdir(parents=True, exist_ok=True)
-    with summary_path.open("w", encoding="utf-8") as f:
+    with summary_path.open("a", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=True, indent=2)
+        f.write("\n\n")
 
     print(f"Judged {total} comparisons.")
     print(summary)
