@@ -72,7 +72,9 @@ def _normalize_model_config(
     raise ValueError(f"Unexpected model config for '{key}': {value}")
 
 
-def _load_model_and_tokenizer(model_cfg: dict[str, Any], generation_cfg: dict[str, Any]):
+def _load_model_and_tokenizer(
+    model_cfg: dict[str, Any], generation_cfg: dict[str, Any]
+):
     model_type = model_cfg.get("model_type", "causal")
     device = generation_cfg.get("device", _default_device())
     dtype = _resolve_dtype(generation_cfg.get("torch_dtype"), device)
@@ -87,7 +89,9 @@ def _load_model_and_tokenizer(model_cfg: dict[str, Any], generation_cfg: dict[st
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model_cls = AutoModelForSeq2SeqLM if model_type == "seq2seq" else AutoModelForCausalLM
+    model_cls = (
+        AutoModelForSeq2SeqLM if model_type == "seq2seq" else AutoModelForCausalLM
+    )
     model = model_cls.from_pretrained(
         model_cfg["path"],
         revision=revision,
