@@ -2,7 +2,7 @@
 dataset:
   name: "trl-lib/tldr"
   split: "test"
-  max_samples: 500
+  max_samples: 800
   seed: 42
   # Optional overrides if dataset uses non-standard field names.
   post_field: null
@@ -14,19 +14,14 @@ dataset:
 
 # Model Paths
 models:
-  # sft: "W-61/hh-llama32-1b-sft"  # Update with actual path
-  # standard_dpo: "jackf857/llama32-1b-dpo-hh-rollout"
-  # # beta_dpo: "path/to/beta_dpo"
-  # dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh-rollout"
-  # base_model: "meta-llama/Llama-3.2-1B"
-  sft: "W-61/hh-llama32-1b-sft" # Update with actual path
+  sft: "W-61/hh-llama32-1b-sft"
   standard_dpo: "jackf857/llama32-1b-dpo-hh-rollout"
   beta_dpo: "W-61/llama32-1b-beta-dpo-hh-rollout"
   dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh-rollout"
 # Generation Parameters
 generation:
   max_new_tokens: 128
-  temperature: 0.7
+  temperature: 1.0
   top_p: 0.9
   batch_size: 8
   device: "cuda"
@@ -37,7 +32,7 @@ generation:
 # GPT-4 Oracle Configuration
 gpt4_oracle:
   model: "gpt-4o-2024-08-06"
-  temperature: 0.3
+  temperature: 0.0
   max_tokens: 500
   randomize_order: true
   batch_size: 10
