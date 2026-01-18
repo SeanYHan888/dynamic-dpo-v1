@@ -318,7 +318,7 @@ def main_beta_dpo():
         )
         if is_main:
             print(f"\nPushing model to HuggingFace Hub: {hub_model_id}")
-            trainer.push_to_hub(repo_id=hub_model_id)
+            trainer.model.push_to_hub(hub_model_id)
             print(
                 f"Model uploaded successfully to: https://huggingface.co/{hub_model_id}"
             )

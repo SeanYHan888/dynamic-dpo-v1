@@ -18,11 +18,11 @@ models:
   # standard_dpo: "jackf857/llama32-1b-dpo-hh-rollout"
   # # beta_dpo: "path/to/beta_dpo"
   # dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh-rollout"
-    # base_model: "meta-llama/Llama-3.2-1B"
-    sft: "W-61/hh-llama32-1b-sft"  # Update with actual path
-    standard_dpo: "jackf857/llama32-1b-dpo-hh"
-    # beta_dpo: "path/to/beta_dpo"
-    dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh"
+  # base_model: "meta-llama/Llama-3.2-1B"
+  sft: "W-61/hh-llama32-1b-sft" # Update with actual path
+  standard_dpo: "jackf857/llama32-1b-dpo-hh-rollout"
+  beta_dpo: "W-61/llama32-1b-beta-dpo-hh-rollout"
+  dynamic_beta_dpo: "jackf857/llama32-1b-dynamic-dpo-hh-rollout"
 # Generation Parameters
 generation:
   max_new_tokens: 128
@@ -36,7 +36,7 @@ generation:
 
 # GPT-4 Oracle Configuration
 gpt4_oracle:
-  model: "gpt-4o-mini"
+  model: "gpt-4o-2024-08-06"
   temperature: 0.3
   max_tokens: 500
   randomize_order: true

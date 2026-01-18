@@ -13,15 +13,10 @@ import pandas as pd
 import yaml
 from scipy.stats import beta
 
-
 COMPARISON_MAP = {
     "sft_vs_standard_dpo": ("sft", "standard_dpo"),
     "sft_vs_beta_dpo": ("sft", "beta_dpo"),
     "sft_vs_dynamic_beta_dpo": ("sft", "dynamic_beta_dpo"),
-    "base_vs_sft": ("base_model", "sft"),
-    "base_vs_standard_dpo": ("base_model", "standard_dpo"),
-    "base_vs_beta_dpo": ("base_model", "beta_dpo"),
-    "base_vs_dynamic_beta_dpo": ("base_model", "dynamic_beta_dpo"),
 }
 
 
@@ -94,7 +89,9 @@ def create_comparison_table(results_dir: str | Path) -> pd.DataFrame:
         if not result_path.exists():
             continue
         evaluations = _load_json(result_path)
-        stats = calculate_win_rate(evaluations, dpo_model=dpo_model, sft_model=sft_model)
+        stats = calculate_win_rate(
+            evaluations, dpo_model=dpo_model, sft_model=sft_model
+        )
         rows.append(
             {
                 "Model Pair": f"{sft_model} vs {dpo_model}",
@@ -155,7 +152,9 @@ def main() -> None:
 
     config = _load_config(args.config)
     output_cfg = config.get("output", {})
-    results_dir = args.results_dir or output_cfg.get("results_dir", "test/gpt_judge_TLDR/results")
+    results_dir = args.results_dir or output_cfg.get(
+        "results_dir", "test/gpt_judge_TLDR/results"
+    )
     output_path = args.output or str(Path(results_dir) / "evaluation_report.md")
 
     generate_report(results_dir, output_path)
