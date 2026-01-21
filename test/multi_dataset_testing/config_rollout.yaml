@@ -12,7 +12,7 @@ precision: bf16
 dataset:
   name: rollout
   hf_name: jackf857/hh-llama32-1b-Instruct-rollout-judged
-  max_samples: 800  # Normalized for fair comparison
+  max_samples: 3000  # Normalized for fair comparison
   chat_template: true
   val_ratio: 0.1
   seed: 42
