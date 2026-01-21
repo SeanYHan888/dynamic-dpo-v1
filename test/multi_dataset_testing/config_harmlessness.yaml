@@ -11,7 +11,7 @@ precision: bf16
 # Dataset Configuration
 dataset:
   name: harmlessness
-  max_samples: 800  # Normalized for fair comparison
+  max_samples: 32000  # 500 steps × 16 batch × 4 grad_accum
   chat_template: true
   val_ratio: 0.1
   seed: 42
@@ -19,7 +19,8 @@ dataset:
 # DPO Training Configuration
 dpo_training:
   epochs: 1
-  batch_size: 8
+  max_steps: 500  # Normalized for fair comparison
+  batch_size: 16
   eval_batch_size: 8
   learning_rate: 5e-7
   log_steps: 10
