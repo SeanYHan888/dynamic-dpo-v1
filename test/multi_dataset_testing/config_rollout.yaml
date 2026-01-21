@@ -44,7 +44,7 @@ risk_test:
 beta_update:
   beta_0: 0.1
   gamma: 2.0
-  alpha: 0.005
+  alpha: 0.0
   beta_max: 2.0
   beta_min: 0.0
 
