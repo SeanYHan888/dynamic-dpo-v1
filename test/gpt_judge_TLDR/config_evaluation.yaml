@@ -32,7 +32,7 @@ generation:
 # GPT-4 Oracle Configuration
 gpt4_oracle:
   model: "gpt-4o-2024-08-06"
-  temperature: 0.0
+  temperature: ???
   max_tokens: 500
   randomize_order: true
   batch_size: 10
