@@ -5,12 +5,10 @@ Pairwise judge model outputs against each other with GPT-4o.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import random
 import re
-import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -29,12 +27,13 @@ def _load_config(path: str | Path) -> dict[str, Any]:
         return yaml.safe_load(handle) or {}
 
 
-def _load_outputs(path: Path) -> dict[str, str]:
+def _load_outputs_with_order(path: Path) -> tuple[dict[str, str], list[str]]:
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, list):
         raise ValueError(f"Expected a list of outputs in {path}")
-    outputs = {}
+    outputs: dict[str, str] = {}
+    ordered_instructions: list[str] = []
     for row in data:
         instruction = row.get("instruction")
         output = row.get("output")
@@ -42,16 +41,8 @@ def _load_outputs(path: Path) -> dict[str, str]:
             continue
         if instruction not in outputs:
             outputs[instruction] = output
-    return outputs
-
-
-def _intersection_keys(*maps: dict[str, str]) -> list[str]:
-    if not maps:
-        return []
-    keys = set(maps[0].keys())
-    for m in maps[1:]:
-        keys &= set(m.keys())
-    return sorted(keys)
+            ordered_instructions.append(instruction)
+    return outputs, ordered_instructions
 
 
 def _build_prompt(
@@ -61,7 +52,6 @@ def _build_prompt(
         instruction=instruction,
         output_a=labeled_outputs.get("A", ""),
         output_b=labeled_outputs.get("B", ""),
-        output_c=labeled_outputs.get("C", ""),
     )
 
 
@@ -178,34 +168,8 @@ def _iter_json_objects(path: Path) -> list[dict[str, Any]]:
     return objects
 
 
-def _clear_results_dir(path: Path) -> None:
-    if not path.exists():
-        return
-    for entry in path.iterdir():
-        if entry.is_dir():
-            shutil.rmtree(entry)
-        else:
-            entry.unlink()
-
-
-def _seed_for_pair(
-    seed: int | None, instruction: str, pair_key: str
-) -> int | None:
-    if seed is None:
-        return None
-    digest = hashlib.sha256(
-        f"{seed}-{pair_key}-{instruction}".encode("utf-8")
-    ).digest()
-    return int.from_bytes(digest[:8], "big")
-
-
-def _shuffle_pair_outputs(
-    outputs: list[tuple[str, str]], rng: random.Random | None
-) -> None:
-    if rng is None:
-        random.SystemRandom().shuffle(outputs)
-        return
-    rng.shuffle(outputs)
+def _shuffle_pair_outputs(outputs: list[tuple[str, str]]) -> None:
+    random.SystemRandom().shuffle(outputs)
 
 
 def _call_gpt4_oracle(
@@ -395,20 +359,22 @@ def main() -> None:
         else oracle_cfg.get("max_examples")
     )
 
-    sft_map = _load_outputs(Path(sft_path))
-    og_dpo_map = _load_outputs(Path(og_dpo_path))
-    dpo_map = _load_outputs(Path(dpo_path))
-    beta_dpo_map = (
-        _load_outputs(Path(beta_dpo_path)) if beta_dpo_path else None
-    )
+    sft_map, sft_order = _load_outputs_with_order(Path(sft_path))
+    og_dpo_map, og_dpo_order = _load_outputs_with_order(Path(og_dpo_path))
+    dpo_map, dpo_order = _load_outputs_with_order(Path(dpo_path))
+    if beta_dpo_path:
+        beta_dpo_map, beta_dpo_order = _load_outputs_with_order(
+            Path(beta_dpo_path)
+        )
+    else:
+        beta_dpo_map = None
+        beta_dpo_order = None
 
-    instructions = _intersection_keys(sft_map, og_dpo_map, dpo_map)
+    order_by_key = {"sft": sft_order, "og_dpo": og_dpo_order, "dpo": dpo_order}
+    if beta_dpo_order is not None:
+        order_by_key["beta_dpo"] = beta_dpo_order
+
     shuffle_instructions = oracle_cfg.get("shuffle_instructions", False)
-    if shuffle_instructions:
-        rng = random.Random(seed) if seed is not None else random.Random()
-        rng.shuffle(instructions)
-    if max_examples is not None:
-        instructions = instructions[:max_examples]
 
     seen = set()
     model_maps = {"sft": sft_map, "og_dpo": og_dpo_map, "dpo": dpo_map}
@@ -481,12 +447,20 @@ def main() -> None:
         )
 
         left_key, right_key = pair_map[pair_key]
+        base_instructions = [
+            instruction
+            for instruction in order_by_key[left_key]
+            if instruction in model_maps[right_key]
+        ]
+        if shuffle_instructions:
+            rng = random.Random(seed) if seed is not None else random.Random()
+            rng.shuffle(base_instructions)
+        if max_examples is not None:
+            base_instructions = base_instructions[:max_examples]
         pending_instructions = [
             instruction
-            for instruction in instructions
+            for instruction in base_instructions
             if (instruction, pair_key) not in seen
-            and instruction in model_maps[left_key]
-            and instruction in model_maps[right_key]
         ]
 
         with (
@@ -502,9 +476,7 @@ def main() -> None:
                     (left_key, model_maps[left_key][instruction]),
                     (right_key, model_maps[right_key][instruction]),
                 ]
-                pair_seed = _seed_for_pair(seed, instruction, pair_key)
-                rng = random.Random(pair_seed) if pair_seed is not None else None
-                _shuffle_pair_outputs(outputs, rng=rng)
+                _shuffle_pair_outputs(outputs)
                 label_map = {"A": outputs[0][0], "B": outputs[1][0]}
                 labeled_outputs = {
                     "A": outputs[0][1],

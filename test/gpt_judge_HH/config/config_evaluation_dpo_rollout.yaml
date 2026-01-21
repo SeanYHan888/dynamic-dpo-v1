@@ -39,6 +39,7 @@ generation:
   model_name: "jackf857/llama32-1b-dpo-hh-rollout"
   output_file: "test/gpt_judge_HH/outputs/hh_dpo_outputs.json"
   max_new_tokens: 512
+  min_new_tokens: 10
   batch_size: 1
   device: "cuda"
   temperature: 1.0

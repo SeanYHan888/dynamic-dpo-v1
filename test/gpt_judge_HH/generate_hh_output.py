@@ -188,6 +188,7 @@ def generate_model_outputs(
     model_name: str,
     output_file: str,
     max_new_tokens: int = 512,
+    min_new_tokens: int | None = None,
     batch_size: int = 1,
     device: str = "cuda",
     temperature: float = 0.7,
@@ -268,6 +269,8 @@ def generate_model_outputs(
             "do_sample": do_sample,
             "pad_token_id": tokenizer.pad_token_id,
         }
+        if min_new_tokens is not None:
+            gen_kwargs["min_new_tokens"] = min_new_tokens
         if eos_token_id is not None:
             gen_kwargs["eos_token_id"] = eos_token_id
         if do_sample:
@@ -278,15 +281,17 @@ def generate_model_outputs(
             generated = model.generate(**inputs, **gen_kwargs)
 
         for idx, instruction in enumerate(batch):
+            prompt = prompts[idx]
             if padded_input_length is not None:
                 prompt_length = padded_input_length
             else:
                 prompt_length = input_lengths[idx]
             output_ids = generated[idx][prompt_length:]
-            text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()
+            text = tokenizer.decode(output_ids, skip_special_tokens=False).strip()
             outputs.append(
                 {
-                    "instruction": instruction,
+                    "instruction": prompt,
+                    "raw_instruction": instruction,
                     "output": text,
                     "generator": model_name,
                 }
@@ -328,6 +333,12 @@ def main() -> None:
         type=int,
         default=None,
         help="Maximum number of new tokens to generate",
+    )
+    parser.add_argument(
+        "--min_new_tokens",
+        type=int,
+        default=None,
+        help="Minimum number of new tokens to generate",
     )
     parser.add_argument(
         "--batch_size",
@@ -412,6 +423,11 @@ def main() -> None:
             args.max_new_tokens
             if args.max_new_tokens is not None
             else generation_cfg.get("max_new_tokens", 512)
+        ),
+        min_new_tokens=(
+            args.min_new_tokens
+            if args.min_new_tokens is not None
+            else generation_cfg.get("min_new_tokens")
         ),
         batch_size=(
             args.batch_size

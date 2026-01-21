@@ -1,0 +1,42 @@
+rm_judge:
+  reward_model: "RLHFlow/ArmoRM-Llama3-8B-v0.1"
+  tokenizer_name: null
+  precision: null # "bf16", "fp16", or null for default
+  device_map: "auto" # null to force single-device .to(device)
+  load_in_8bit: false
+  batch_size: 8
+  max_length: null
+
+  # Tie rules (set either/both; tie triggers if any rule triggers)
+  # 1) If the best score is below this threshold, return TIE.
+  tie_if_max_below: 2.0
+  # 2) If scores are within this margin, return TIE.
+  tie_margin: null
+
+inputs:
+  # HH single-turn outputs (list of {instruction, output, generator}).
+  sft: "test/gpt_judge_HH/outputs/hh_sft_outputs.json"
+  og_dpo: "test/gpt_judge_HH/outputs/hh_dpo_outputs.json"
+  dpo: "test/gpt_judge_HH/outputs/hh_dy_dpo_outputs.json"
+  beta_dpo: "test/gpt_judge_HH/outputs/hh_beta_dpo_outputs.json"
+
+pairs:
+  - key: "dpo_vs_sft"
+    left: "dpo"
+    right: "sft"
+  - key: "og_dpo_vs_sft"
+    left: "og_dpo"
+    right: "sft"
+  - key: "beta_dpo_vs_sft"
+    left: "beta_dpo"
+    right: "sft"
+
+output:
+  results_dir: "test/judge_RM/results"
+  scores_dir: "test/judge_RM/scores"
+  summary_file: "test/judge_RM/results/summary.json"
+
+run:
+  max_examples: null
+  resume: true
+

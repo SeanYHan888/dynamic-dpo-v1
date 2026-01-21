@@ -40,10 +40,11 @@ generation:
   model_name: "W-61/llama32-1b-beta-dpo-hh-rollout"
   output_file: "test/gpt_judge_HH/outputs/hh_beta_dpo_outputs.json"
   max_new_tokens: 512
+  min_new_tokens: 10
   batch_size: 1
   device: "cuda"
-  temperature: 0.7
-  top_p: 0.9
+  temperature: 1.0
+  top_p: 1.0
   max_input_tokens: 2048
   max_instances: 1000
   seed: 42
