@@ -1,0 +1,54 @@
+# Multi-Dataset Testing Pipeline Configuration
+# Dataset: Custom Rollout (jackf857/hh-llama32-1b-Instruct-rollout-judged)
+
+experiment_name: dynamic-dpo-rollout
+
+# Model Configuration
+policy_name: jackf857/Llama32-1b-Instruct-hh-sft-30
+ref_name: jackf857/Llama32-1b-Instruct-hh-sft-30
+precision: bf16
+
+# Dataset Configuration
+dataset:
+  name: rollout
+  hf_name: jackf857/hh-llama32-1b-Instruct-rollout-judged
+  max_samples: 800  # Normalized for fair comparison
+  chat_template: true
+  val_ratio: 0.1
+  seed: 42
+
+# DPO Training Configuration
+dpo_training:
+  epochs: 1
+  batch_size: 8
+  eval_batch_size: 8
+  learning_rate: 5e-7
+  log_steps: 10
+  eval_steps: 100
+  save_steps: 100
+  gradient_accumulation: 4
+  max_grad_norm: 10
+  warmup_steps: 50
+  wandb_project: multi-dataset-dpo-testing
+  run_name: dynamic-dpo-rollout
+  save_dir: outputs/rollout
+
+# Risk Test Configuration
+risk_test:
+  delta: 0.1
+  lambda: 0.1
+  beta_warmup: 50
+
+# Beta Update Configuration
+beta_update:
+  beta_0: 0.1
+  gamma: 2.0
+  alpha: 0.005
+  beta_max: 2.0
+  beta_min: 0.0
+
+# Margin Logging Configuration
+margin_log:
+  jsonl_sample_size: 32
+  save_per_rank: false
+  log_dir: logs/rollout_margins
