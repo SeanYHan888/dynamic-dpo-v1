@@ -198,6 +198,7 @@ def run_experiment(
     dataset_cfg = config["dataset"]
     max_samples = dataset_cfg.get("max_samples", DEFAULT_MAX_SAMPLES)
     apply_chat_template = dataset_cfg.get("chat_template", True)
+    seed = int(dataset_cfg.get("seed", 42))
 
     print(f"Loading {experiment_name} dataset (max_samples={max_samples})...")
     dataset = load_dataset_by_name(
@@ -205,13 +206,13 @@ def run_experiment(
         max_samples=max_samples,
         tokenizer=tokenizer if apply_chat_template else None,
         apply_chat_template=apply_chat_template,
+        seed=seed,
     )
 
     print(f"Dataset loaded: {len(dataset)} samples")
 
     # Split train/val
     val_ratio = float(dataset_cfg.get("val_ratio", 0.1))
-    seed = int(dataset_cfg.get("seed", 42))
     split = dataset.train_test_split(test_size=val_ratio, seed=seed)
     train_ds = split["train"]
     eval_ds = split["test"]

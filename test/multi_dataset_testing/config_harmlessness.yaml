@@ -11,7 +11,7 @@ precision: bf16
 # Dataset Configuration
 dataset:
   name: harmlessness
-  max_samples: 800  # Normalized for fair comparison
+  max_samples: 20000  # Normalized for fair comparison
   chat_template: true
   val_ratio: 0.1
   seed: 42

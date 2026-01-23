@@ -26,10 +26,12 @@ from src.data.hh_dataset import (
 )
 
 
+
 def load_helpfulness_dataset(
     max_samples: Optional[int] = None,
     tokenizer: Any = None,
     apply_chat_template: bool = True,
+    seed: Optional[int] = 42,
 ) -> Dataset:
     """Load the hh-rlhf helpfulness dataset.
 
@@ -39,6 +41,7 @@ def load_helpfulness_dataset(
         max_samples: Maximum number of samples to load (for normalization).
         tokenizer: Tokenizer for chat template application.
         apply_chat_template: Whether to apply chat template to prompts.
+        seed: Seed for shuffling when subsampling.
 
     Returns:
         Processed dataset with {prompt, chosen, rejected} format.
@@ -56,7 +59,7 @@ def load_helpfulness_dataset(
 
     # Limit samples if specified
     if max_samples is not None and len(combined) > max_samples:
-        combined = combined.shuffle(seed=42).select(range(max_samples))
+        combined = combined.shuffle(seed=seed).select(range(max_samples))
 
     # Convert to triplet format
     ds = build_HH_dataset(combined)
@@ -72,6 +75,7 @@ def load_harmlessness_dataset(
     max_samples: Optional[int] = None,
     tokenizer: Any = None,
     apply_chat_template: bool = True,
+    seed: Optional[int] = 42,
 ) -> Dataset:
     """Load the hh-rlhf harmlessness dataset.
 
@@ -81,6 +85,7 @@ def load_harmlessness_dataset(
         max_samples: Maximum number of samples to load (for normalization).
         tokenizer: Tokenizer for chat template application.
         apply_chat_template: Whether to apply chat template to prompts.
+        seed: Seed for shuffling when subsampling.
 
     Returns:
         Processed dataset with {prompt, chosen, rejected} format.
@@ -92,7 +97,7 @@ def load_harmlessness_dataset(
 
     # Limit samples if specified
     if max_samples is not None and len(harmless) > max_samples:
-        harmless = harmless.shuffle(seed=42).select(range(max_samples))
+        harmless = harmless.shuffle(seed=seed).select(range(max_samples))
 
     # Convert to triplet format
     ds = build_HH_dataset(harmless)
@@ -109,6 +114,7 @@ def load_rollout_dataset(
     max_samples: Optional[int] = None,
     tokenizer: Any = None,
     apply_chat_template: bool = True,
+    seed: Optional[int] = 42,
 ) -> Dataset:
     """Load the custom rollout dataset from HuggingFace.
 
@@ -117,6 +123,7 @@ def load_rollout_dataset(
         max_samples: Maximum number of samples to load (for normalization).
         tokenizer: Tokenizer for chat template application.
         apply_chat_template: Whether to apply chat template to prompts.
+        seed: Seed for shuffling when subsampling.
 
     Returns:
         Processed dataset with {prompt, chosen, rejected} format.
@@ -126,7 +133,7 @@ def load_rollout_dataset(
 
     # Limit samples if specified
     if max_samples is not None and len(raw_ds) > max_samples:
-        raw_ds = raw_ds.shuffle(seed=42).select(range(max_samples))
+        raw_ds = raw_ds.shuffle(seed=seed).select(range(max_samples))
 
     # Convert to triplet format using rollout builder
     ds = build_rollout_dataset(raw_ds)
@@ -143,6 +150,7 @@ def load_dataset_by_name(
     max_samples: Optional[int] = None,
     tokenizer: Any = None,
     apply_chat_template: bool = True,
+    seed: Optional[int] = 42,
 ) -> Dataset:
     """Load a dataset by name.
 
@@ -151,6 +159,7 @@ def load_dataset_by_name(
         max_samples: Maximum number of samples.
         tokenizer: Tokenizer for chat template application.
         apply_chat_template: Whether to apply chat template.
+        seed: Seed for shuffling when subsampling.
 
     Returns:
         Processed dataset.
@@ -173,6 +182,7 @@ def load_dataset_by_name(
         max_samples=max_samples,
         tokenizer=tokenizer,
         apply_chat_template=apply_chat_template,
+        seed=seed,
     )
 
 
