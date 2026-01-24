@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 from trl import DPOTrainer
 
-from ..losses.dpo_loss import compute_log_prob, dpo_loss as dpo_loss_fn
+from ..losses.dpo_loss import dpo_loss as dpo_loss_fn
 from ..losses.margin import margin_compute, empirical_over_threshold_proportion, risk_test
 from ..losses.beta_update import update_beta
 from ..quantile.accumulator import WarmupQuantileAccumulator, EMAUpdate
@@ -176,51 +176,14 @@ class DynamicBetaDPOTrainer(DPOTrainer):
 
     def compute_loss(self, model, inputs, return_outputs: bool = False, **kwargs):
         """Compute DPO loss with dynamic beta adjustment."""
-        # Policy model forward passes
-        policy_chosen_out = model(
-            input_ids=inputs["chosen_input_ids"],
-            attention_mask=inputs["chosen_attention_mask"],
-        ).logits
+        # Policy model forward pass on concatenated prompt+completion
+        model_output = self.concatenated_forward(model, inputs)
+        policy_chosen_log_prob = model_output["chosen_logps"]
+        policy_rejected_log_prob = model_output["rejected_logps"]
 
-        policy_rejected_out = model(
-            input_ids=inputs["rejected_input_ids"],
-            attention_mask=inputs["rejected_attention_mask"],
-        ).logits
-
-        # Reference model forward passes (no gradients)
+        # Reference model forward pass (no gradients)
         with torch.no_grad():
-            ref_chosen_out = self.ref_model(
-                input_ids=inputs["chosen_input_ids"],
-                attention_mask=inputs["chosen_attention_mask"],
-            ).logits
-
-            ref_rejected_out = self.ref_model(
-                input_ids=inputs["rejected_input_ids"],
-                attention_mask=inputs["rejected_attention_mask"],
-            ).logits
-
-        # Build labels
-        if "chosen_labels" in inputs and "rejected_labels" in inputs:
-            chosen_labels = inputs["chosen_labels"]
-            rejected_labels = inputs["rejected_labels"]
-        else:
-            prompt_attn = inputs.get("prompt_attention_mask", None)
-            chosen_labels = self._build_labels_from_prompt(
-                input_ids=inputs["chosen_input_ids"],
-                attention_mask=inputs["chosen_attention_mask"],
-                prompt_attention_mask=prompt_attn,
-            )
-            rejected_labels = self._build_labels_from_prompt(
-                input_ids=inputs["rejected_input_ids"],
-                attention_mask=inputs["rejected_attention_mask"],
-                prompt_attention_mask=prompt_attn,
-            )
-
-        # Compute log probabilities
-        policy_chosen_log_prob = compute_log_prob(logits=policy_chosen_out, labels=chosen_labels)
-        policy_rejected_log_prob = compute_log_prob(logits=policy_rejected_out, labels=rejected_labels)
-        ref_chosen_log_prob = compute_log_prob(logits=ref_chosen_out, labels=chosen_labels)
-        ref_rejected_log_prob = compute_log_prob(logits=ref_rejected_out, labels=rejected_labels)
+            ref_chosen_log_prob, ref_rejected_log_prob = self.compute_ref_log_probs(inputs)
 
         # Compute DPO loss
         loss_ten, chosen_rewards, rejected_rewards = dpo_loss_fn(
