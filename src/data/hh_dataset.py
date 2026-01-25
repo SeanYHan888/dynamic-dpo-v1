@@ -67,7 +67,7 @@ def convert_to_triples(
 def build_HH_dataset(ds) -> Dataset:
     """Process entire dataset into HH triplets format."""
     hh_ds_raw = []
-    for idx, row in enumerate(ds): 
+    for idx, row in enumerate(ds):
         output = convert_to_triples(
             chosen_text=row["chosen"], rejected_text=row["rejected"]
         )
@@ -85,7 +85,7 @@ def _coerce_messages(messages: Any) -> Optional[List[Dict[str, str]]]:
         return None
     cleaned: List[Dict[str, str]] = []
     for msg in messages:
-        if not isinstance(msg, dict): 
+        if not isinstance(msg, dict):
             continue
         role = msg.get("role")
         if role not in ("user", "assistant"):
