@@ -154,6 +154,42 @@ class DynamicBetaDPOTrainer(DPOTrainer):
                 jsonl_path=jsonl_path,
             )
 
+    def _concat_prompt_completion(
+        self,
+        prompt_input_ids: torch.Tensor,
+        prompt_attention_mask: torch.Tensor,
+        completion_input_ids: torch.Tensor,
+        completion_attention_mask: torch.Tensor,
+    ) -> tuple:
+        """Concatenate prompt and completion sequences.
+
+        Returns:
+            Tuple of (input_ids, attention_mask, prompt_lengths) where prompt_lengths
+            is a 1D tensor containing the actual prompt length for each sample.
+        """
+        # Get actual prompt lengths (sum of attention mask)
+        prompt_lengths = prompt_attention_mask.sum(dim=1)  # (batch_size,)
+
+        # Concatenate along sequence dimension
+        input_ids = torch.cat([prompt_input_ids, completion_input_ids], dim=1)
+        attention_mask = torch.cat([prompt_attention_mask, completion_attention_mask], dim=1)
+
+        return input_ids, attention_mask, prompt_lengths
+
+    def _build_labels_with_prompt_lengths(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        prompt_lengths: torch.Tensor,
+    ) -> torch.Tensor:
+        """Build labels masking prompt tokens based on actual prompt lengths."""
+        labels = input_ids.clone()
+        for i, pl in enumerate(prompt_lengths.tolist()):
+            pl = int(min(pl, labels.size(1)))
+            labels[i, :pl] = -100
+        labels[attention_mask == 0] = -100
+        return labels
+
     def _build_labels_from_prompt(
         self,
         input_ids: torch.Tensor,
@@ -161,7 +197,7 @@ class DynamicBetaDPOTrainer(DPOTrainer):
         prompt_attention_mask: Optional[torch.Tensor],
     ) -> torch.Tensor:
         """Build token-level labels for logprob computation.
-        
+
         Masks prompt tokens to -100 (if prompt_attention_mask is provided),
         and also masks padding tokens.
         """
@@ -176,45 +212,75 @@ class DynamicBetaDPOTrainer(DPOTrainer):
 
     def compute_loss(self, model, inputs, return_outputs: bool = False, **kwargs):
         """Compute DPO loss with dynamic beta adjustment."""
+        # Check if we need to concatenate prompt + completion (TRL v0.26+ format)
+        if "prompt_input_ids" in inputs:
+            # Concatenate prompt + completion for chosen
+            chosen_input_ids, chosen_attention_mask, chosen_prompt_lens = self._concat_prompt_completion(
+                prompt_input_ids=inputs["prompt_input_ids"],
+                prompt_attention_mask=inputs["prompt_attention_mask"],
+                completion_input_ids=inputs["chosen_input_ids"],
+                completion_attention_mask=inputs["chosen_attention_mask"],
+            )
+            # Concatenate prompt + completion for rejected
+            rejected_input_ids, rejected_attention_mask, rejected_prompt_lens = self._concat_prompt_completion(
+                prompt_input_ids=inputs["prompt_input_ids"],
+                prompt_attention_mask=inputs["prompt_attention_mask"],
+                completion_input_ids=inputs["rejected_input_ids"],
+                completion_attention_mask=inputs["rejected_attention_mask"],
+            )
+            # Build labels with proper prompt masking
+            chosen_labels = self._build_labels_with_prompt_lengths(
+                chosen_input_ids, chosen_attention_mask, chosen_prompt_lens
+            )
+            rejected_labels = self._build_labels_with_prompt_lengths(
+                rejected_input_ids, rejected_attention_mask, rejected_prompt_lens
+            )
+        else:
+            # Use inputs directly (already concatenated format)
+            chosen_input_ids = inputs["chosen_input_ids"]
+            chosen_attention_mask = inputs["chosen_attention_mask"]
+            rejected_input_ids = inputs["rejected_input_ids"]
+            rejected_attention_mask = inputs["rejected_attention_mask"]
+
+            # Build labels
+            if "chosen_labels" in inputs and "rejected_labels" in inputs:
+                chosen_labels = inputs["chosen_labels"]
+                rejected_labels = inputs["rejected_labels"]
+            else:
+                prompt_attn = inputs.get("prompt_attention_mask", None)
+                chosen_labels = self._build_labels_from_prompt(
+                    input_ids=chosen_input_ids,
+                    attention_mask=chosen_attention_mask,
+                    prompt_attention_mask=prompt_attn,
+                )
+                rejected_labels = self._build_labels_from_prompt(
+                    input_ids=rejected_input_ids,
+                    attention_mask=rejected_attention_mask,
+                    prompt_attention_mask=prompt_attn,
+                )
+
         # Policy model forward passes
         policy_chosen_out = model(
-            input_ids=inputs["chosen_input_ids"],
-            attention_mask=inputs["chosen_attention_mask"],
+            input_ids=chosen_input_ids,
+            attention_mask=chosen_attention_mask,
         ).logits
 
         policy_rejected_out = model(
-            input_ids=inputs["rejected_input_ids"],
-            attention_mask=inputs["rejected_attention_mask"],
+            input_ids=rejected_input_ids,
+            attention_mask=rejected_attention_mask,
         ).logits
 
         # Reference model forward passes (no gradients)
         with torch.no_grad():
             ref_chosen_out = self.ref_model(
-                input_ids=inputs["chosen_input_ids"],
-                attention_mask=inputs["chosen_attention_mask"],
+                input_ids=chosen_input_ids,
+                attention_mask=chosen_attention_mask,
             ).logits
 
             ref_rejected_out = self.ref_model(
-                input_ids=inputs["rejected_input_ids"],
-                attention_mask=inputs["rejected_attention_mask"],
+                input_ids=rejected_input_ids,
+                attention_mask=rejected_attention_mask,
             ).logits
-
-        # Build labels
-        if "chosen_labels" in inputs and "rejected_labels" in inputs:
-            chosen_labels = inputs["chosen_labels"]
-            rejected_labels = inputs["rejected_labels"]
-        else:
-            prompt_attn = inputs.get("prompt_attention_mask", None)
-            chosen_labels = self._build_labels_from_prompt(
-                input_ids=inputs["chosen_input_ids"],
-                attention_mask=inputs["chosen_attention_mask"],
-                prompt_attention_mask=prompt_attn,
-            )
-            rejected_labels = self._build_labels_from_prompt(
-                input_ids=inputs["rejected_input_ids"],
-                attention_mask=inputs["rejected_attention_mask"],
-                prompt_attention_mask=prompt_attn,
-            )
 
         # Compute log probabilities
         policy_chosen_log_prob = compute_log_prob(logits=policy_chosen_out, labels=chosen_labels)
