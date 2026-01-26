@@ -1,0 +1,914 @@
+{
+  "stats": {
+    "total_samples": 1000,
+    "prompt_exceeds_max": 0,
+    "chosen_fully_truncated": 0,
+    "rejected_fully_truncated": 0,
+    "both_fully_truncated": 0,
+    "partial_chosen_truncation": 11,
+    "partial_rejected_truncation": 19,
+    "no_truncation": 981
+  },
+  "sample_details": [
+    {
+      "index": 0,
+      "prompt_len": 0,
+      "chosen_len": 185,
+      "rejected_len": 179,
+      "chosen_surviving": 185,
+      "rejected_surviving": 179,
+      "issue": null
+    },
+    {
+      "index": 1,
+      "prompt_len": 0,
+      "chosen_len": 93,
+      "rejected_len": 99,
+      "chosen_surviving": 93,
+      "rejected_surviving": 99,
+      "issue": null
+    },
+    {
+      "index": 2,
+      "prompt_len": 0,
+      "chosen_len": 46,
+      "rejected_len": 178,
+      "chosen_surviving": 46,
+      "rejected_surviving": 178,
+      "issue": null
+    },
+    {
+      "index": 3,
+      "prompt_len": 0,
+      "chosen_len": 93,
+      "rejected_len": 100,
+      "chosen_surviving": 93,
+      "rejected_surviving": 100,
+      "issue": null
+    },
+    {
+      "index": 4,
+      "prompt_len": 0,
+      "chosen_len": 28,
+      "rejected_len": 113,
+      "chosen_surviving": 28,
+      "rejected_surviving": 113,
+      "issue": null
+    },
+    {
+      "index": 5,
+      "prompt_len": 0,
+      "chosen_len": 86,
+      "rejected_len": 104,
+      "chosen_surviving": 86,
+      "rejected_surviving": 104,
+      "issue": null
+    },
+    {
+      "index": 6,
+      "prompt_len": 0,
+      "chosen_len": 50,
+      "rejected_len": 22,
+      "chosen_surviving": 50,
+      "rejected_surviving": 22,
+      "issue": null
+    },
+    {
+      "index": 7,
+      "prompt_len": 0,
+      "chosen_len": 161,
+      "rejected_len": 175,
+      "chosen_surviving": 161,
+      "rejected_surviving": 175,
+      "issue": null
+    },
+    {
+      "index": 8,
+      "prompt_len": 0,
+      "chosen_len": 161,
+      "rejected_len": 182,
+      "chosen_surviving": 161,
+      "rejected_surviving": 182,
+      "issue": null
+    },
+    {
+      "index": 9,
+      "prompt_len": 0,
+      "chosen_len": 237,
+      "rejected_len": 391,
+      "chosen_surviving": 237,
+      "rejected_surviving": 391,
+      "issue": null
+    },
+    {
+      "index": 10,
+      "prompt_len": 0,
+      "chosen_len": 24,
+      "rejected_len": 35,
+      "chosen_surviving": 24,
+      "rejected_surviving": 35,
+      "issue": null
+    },
+    {
+      "index": 11,
+      "prompt_len": 0,
+      "chosen_len": 34,
+      "rejected_len": 146,
+      "chosen_surviving": 34,
+      "rejected_surviving": 146,
+      "issue": null
+    },
+    {
+      "index": 12,
+      "prompt_len": 0,
+      "chosen_len": 126,
+      "rejected_len": 113,
+      "chosen_surviving": 126,
+      "rejected_surviving": 113,
+      "issue": null
+    },
+    {
+      "index": 13,
+      "prompt_len": 0,
+      "chosen_len": 67,
+      "rejected_len": 58,
+      "chosen_surviving": 67,
+      "rejected_surviving": 58,
+      "issue": null
+    },
+    {
+      "index": 14,
+      "prompt_len": 0,
+      "chosen_len": 208,
+      "rejected_len": 211,
+      "chosen_surviving": 208,
+      "rejected_surviving": 211,
+      "issue": null
+    },
+    {
+      "index": 15,
+      "prompt_len": 0,
+      "chosen_len": 23,
+      "rejected_len": 31,
+      "chosen_surviving": 23,
+      "rejected_surviving": 31,
+      "issue": null
+    },
+    {
+      "index": 16,
+      "prompt_len": 0,
+      "chosen_len": 220,
+      "rejected_len": 333,
+      "chosen_surviving": 220,
+      "rejected_surviving": 333,
+      "issue": null
+    },
+    {
+      "index": 17,
+      "prompt_len": 0,
+      "chosen_len": 45,
+      "rejected_len": 37,
+      "chosen_surviving": 45,
+      "rejected_surviving": 37,
+      "issue": null
+    },
+    {
+      "index": 18,
+      "prompt_len": 0,
+      "chosen_len": 154,
+      "rejected_len": 75,
+      "chosen_surviving": 154,
+      "rejected_surviving": 75,
+      "issue": null
+    },
+    {
+      "index": 19,
+      "prompt_len": 0,
+      "chosen_len": 163,
+      "rejected_len": 136,
+      "chosen_surviving": 163,
+      "rejected_surviving": 136,
+      "issue": null
+    },
+    {
+      "index": 20,
+      "prompt_len": 0,
+      "chosen_len": 80,
+      "rejected_len": 64,
+      "chosen_surviving": 80,
+      "rejected_surviving": 64,
+      "issue": null
+    },
+    {
+      "index": 21,
+      "prompt_len": 0,
+      "chosen_len": 57,
+      "rejected_len": 53,
+      "chosen_surviving": 57,
+      "rejected_surviving": 53,
+      "issue": null
+    },
+    {
+      "index": 22,
+      "prompt_len": 0,
+      "chosen_len": 147,
+      "rejected_len": 135,
+      "chosen_surviving": 147,
+      "rejected_surviving": 135,
+      "issue": null
+    },
+    {
+      "index": 23,
+      "prompt_len": 0,
+      "chosen_len": 23,
+      "rejected_len": 45,
+      "chosen_surviving": 23,
+      "rejected_surviving": 45,
+      "issue": null
+    },
+    {
+      "index": 24,
+      "prompt_len": 0,
+      "chosen_len": 29,
+      "rejected_len": 22,
+      "chosen_surviving": 29,
+      "rejected_surviving": 22,
+      "issue": null
+    },
+    {
+      "index": 25,
+      "prompt_len": 0,
+      "chosen_len": 59,
+      "rejected_len": 13,
+      "chosen_surviving": 59,
+      "rejected_surviving": 13,
+      "issue": null
+    },
+    {
+      "index": 26,
+      "prompt_len": 0,
+      "chosen_len": 115,
+      "rejected_len": 131,
+      "chosen_surviving": 115,
+      "rejected_surviving": 131,
+      "issue": null
+    },
+    {
+      "index": 27,
+      "prompt_len": 0,
+      "chosen_len": 127,
+      "rejected_len": 110,
+      "chosen_surviving": 127,
+      "rejected_surviving": 110,
+      "issue": null
+    },
+    {
+      "index": 28,
+      "prompt_len": 0,
+      "chosen_len": 42,
+      "rejected_len": 26,
+      "chosen_surviving": 42,
+      "rejected_surviving": 26,
+      "issue": null
+    },
+    {
+      "index": 29,
+      "prompt_len": 0,
+      "chosen_len": 19,
+      "rejected_len": 57,
+      "chosen_surviving": 19,
+      "rejected_surviving": 57,
+      "issue": null
+    },
+    {
+      "index": 30,
+      "prompt_len": 0,
+      "chosen_len": 219,
+      "rejected_len": 223,
+      "chosen_surviving": 219,
+      "rejected_surviving": 223,
+      "issue": null
+    },
+    {
+      "index": 31,
+      "prompt_len": 0,
+      "chosen_len": 386,
+      "rejected_len": 400,
+      "chosen_surviving": 386,
+      "rejected_surviving": 400,
+      "issue": null
+    },
+    {
+      "index": 32,
+      "prompt_len": 0,
+      "chosen_len": 92,
+      "rejected_len": 97,
+      "chosen_surviving": 92,
+      "rejected_surviving": 97,
+      "issue": null
+    },
+    {
+      "index": 33,
+      "prompt_len": 0,
+      "chosen_len": 39,
+      "rejected_len": 26,
+      "chosen_surviving": 39,
+      "rejected_surviving": 26,
+      "issue": null
+    },
+    {
+      "index": 34,
+      "prompt_len": 0,
+      "chosen_len": 278,
+      "rejected_len": 204,
+      "chosen_surviving": 278,
+      "rejected_surviving": 204,
+      "issue": null
+    },
+    {
+      "index": 35,
+      "prompt_len": 0,
+      "chosen_len": 505,
+      "rejected_len": 508,
+      "chosen_surviving": 505,
+      "rejected_surviving": 508,
+      "issue": null
+    },
+    {
+      "index": 36,
+      "prompt_len": 0,
+      "chosen_len": 131,
+      "rejected_len": 175,
+      "chosen_surviving": 131,
+      "rejected_surviving": 175,
+      "issue": null
+    },
+    {
+      "index": 37,
+      "prompt_len": 0,
+      "chosen_len": 176,
+      "rejected_len": 214,
+      "chosen_surviving": 176,
+      "rejected_surviving": 214,
+      "issue": null
+    },
+    {
+      "index": 38,
+      "prompt_len": 0,
+      "chosen_len": 454,
+      "rejected_len": 604,
+      "chosen_surviving": 454,
+      "rejected_surviving": 512,
+      "issue": "partial_rejected"
+    },
+    {
+      "index": 39,
+      "prompt_len": 0,
+      "chosen_len": 192,
+      "rejected_len": 244,
+      "chosen_surviving": 192,
+      "rejected_surviving": 244,
+      "issue": null
+    },
+    {
+      "index": 40,
+      "prompt_len": 0,
+      "chosen_len": 165,
+      "rejected_len": 178,
+      "chosen_surviving": 165,
+      "rejected_surviving": 178,
+      "issue": null
+    },
+    {
+      "index": 41,
+      "prompt_len": 0,
+      "chosen_len": 151,
+      "rejected_len": 134,
+      "chosen_surviving": 151,
+      "rejected_surviving": 134,
+      "issue": null
+    },
+    {
+      "index": 42,
+      "prompt_len": 0,
+      "chosen_len": 126,
+      "rejected_len": 104,
+      "chosen_surviving": 126,
+      "rejected_surviving": 104,
+      "issue": null
+    },
+    {
+      "index": 43,
+      "prompt_len": 0,
+      "chosen_len": 177,
+      "rejected_len": 146,
+      "chosen_surviving": 177,
+      "rejected_surviving": 146,
+      "issue": null
+    },
+    {
+      "index": 44,
+      "prompt_len": 0,
+      "chosen_len": 594,
+      "rejected_len": 628,
+      "chosen_surviving": 512,
+      "rejected_surviving": 512,
+      "issue": "partial_truncation"
+    },
+    {
+      "index": 45,
+      "prompt_len": 0,
+      "chosen_len": 184,
+      "rejected_len": 286,
+      "chosen_surviving": 184,
+      "rejected_surviving": 286,
+      "issue": null
+    },
+    {
+      "index": 46,
+      "prompt_len": 0,
+      "chosen_len": 233,
+      "rejected_len": 212,
+      "chosen_surviving": 233,
+      "rejected_surviving": 212,
+      "issue": null
+    },
+    {
+      "index": 47,
+      "prompt_len": 0,
+      "chosen_len": 69,
+      "rejected_len": 82,
+      "chosen_surviving": 69,
+      "rejected_surviving": 82,
+      "issue": null
+    },
+    {
+      "index": 48,
+      "prompt_len": 0,
+      "chosen_len": 103,
+      "rejected_len": 106,
+      "chosen_surviving": 103,
+      "rejected_surviving": 106,
+      "issue": null
+    },
+    {
+      "index": 49,
+      "prompt_len": 0,
+      "chosen_len": 143,
+      "rejected_len": 103,
+      "chosen_surviving": 143,
+      "rejected_surviving": 103,
+      "issue": null
+    },
+    {
+      "index": 50,
+      "prompt_len": 0,
+      "chosen_len": 102,
+      "rejected_len": 77,
+      "chosen_surviving": 102,
+      "rejected_surviving": 77,
+      "issue": null
+    },
+    {
+      "index": 51,
+      "prompt_len": 0,
+      "chosen_len": 153,
+      "rejected_len": 156,
+      "chosen_surviving": 153,
+      "rejected_surviving": 156,
+      "issue": null
+    },
+    {
+      "index": 52,
+      "prompt_len": 0,
+      "chosen_len": 117,
+      "rejected_len": 121,
+      "chosen_surviving": 117,
+      "rejected_surviving": 121,
+      "issue": null
+    },
+    {
+      "index": 53,
+      "prompt_len": 0,
+      "chosen_len": 441,
+      "rejected_len": 335,
+      "chosen_surviving": 441,
+      "rejected_surviving": 335,
+      "issue": null
+    },
+    {
+      "index": 54,
+      "prompt_len": 0,
+      "chosen_len": 32,
+      "rejected_len": 136,
+      "chosen_surviving": 32,
+      "rejected_surviving": 136,
+      "issue": null
+    },
+    {
+      "index": 55,
+      "prompt_len": 0,
+      "chosen_len": 66,
+      "rejected_len": 121,
+      "chosen_surviving": 66,
+      "rejected_surviving": 121,
+      "issue": null
+    },
+    {
+      "index": 56,
+      "prompt_len": 0,
+      "chosen_len": 219,
+      "rejected_len": 354,
+      "chosen_surviving": 219,
+      "rejected_surviving": 354,
+      "issue": null
+    },
+    {
+      "index": 57,
+      "prompt_len": 0,
+      "chosen_len": 56,
+      "rejected_len": 54,
+      "chosen_surviving": 56,
+      "rejected_surviving": 54,
+      "issue": null
+    },
+    {
+      "index": 58,
+      "prompt_len": 0,
+      "chosen_len": 263,
+      "rejected_len": 323,
+      "chosen_surviving": 263,
+      "rejected_surviving": 323,
+      "issue": null
+    },
+    {
+      "index": 59,
+      "prompt_len": 0,
+      "chosen_len": 48,
+      "rejected_len": 31,
+      "chosen_surviving": 48,
+      "rejected_surviving": 31,
+      "issue": null
+    },
+    {
+      "index": 60,
+      "prompt_len": 0,
+      "chosen_len": 54,
+      "rejected_len": 58,
+      "chosen_surviving": 54,
+      "rejected_surviving": 58,
+      "issue": null
+    },
+    {
+      "index": 61,
+      "prompt_len": 0,
+      "chosen_len": 195,
+      "rejected_len": 196,
+      "chosen_surviving": 195,
+      "rejected_surviving": 196,
+      "issue": null
+    },
+    {
+      "index": 62,
+      "prompt_len": 0,
+      "chosen_len": 97,
+      "rejected_len": 82,
+      "chosen_surviving": 97,
+      "rejected_surviving": 82,
+      "issue": null
+    },
+    {
+      "index": 63,
+      "prompt_len": 0,
+      "chosen_len": 136,
+      "rejected_len": 121,
+      "chosen_surviving": 136,
+      "rejected_surviving": 121,
+      "issue": null
+    },
+    {
+      "index": 64,
+      "prompt_len": 0,
+      "chosen_len": 110,
+      "rejected_len": 103,
+      "chosen_surviving": 110,
+      "rejected_surviving": 103,
+      "issue": null
+    },
+    {
+      "index": 65,
+      "prompt_len": 0,
+      "chosen_len": 124,
+      "rejected_len": 186,
+      "chosen_surviving": 124,
+      "rejected_surviving": 186,
+      "issue": null
+    },
+    {
+      "index": 66,
+      "prompt_len": 0,
+      "chosen_len": 62,
+      "rejected_len": 85,
+      "chosen_surviving": 62,
+      "rejected_surviving": 85,
+      "issue": null
+    },
+    {
+      "index": 67,
+      "prompt_len": 0,
+      "chosen_len": 85,
+      "rejected_len": 118,
+      "chosen_surviving": 85,
+      "rejected_surviving": 118,
+      "issue": null
+    },
+    {
+      "index": 68,
+      "prompt_len": 0,
+      "chosen_len": 183,
+      "rejected_len": 225,
+      "chosen_surviving": 183,
+      "rejected_surviving": 225,
+      "issue": null
+    },
+    {
+      "index": 69,
+      "prompt_len": 0,
+      "chosen_len": 190,
+      "rejected_len": 202,
+      "chosen_surviving": 190,
+      "rejected_surviving": 202,
+      "issue": null
+    },
+    {
+      "index": 70,
+      "prompt_len": 0,
+      "chosen_len": 190,
+      "rejected_len": 193,
+      "chosen_surviving": 190,
+      "rejected_surviving": 193,
+      "issue": null
+    },
+    {
+      "index": 71,
+      "prompt_len": 0,
+      "chosen_len": 97,
+      "rejected_len": 208,
+      "chosen_surviving": 97,
+      "rejected_surviving": 208,
+      "issue": null
+    },
+    {
+      "index": 72,
+      "prompt_len": 0,
+      "chosen_len": 104,
+      "rejected_len": 173,
+      "chosen_surviving": 104,
+      "rejected_surviving": 173,
+      "issue": null
+    },
+    {
+      "index": 73,
+      "prompt_len": 0,
+      "chosen_len": 285,
+      "rejected_len": 328,
+      "chosen_surviving": 285,
+      "rejected_surviving": 328,
+      "issue": null
+    },
+    {
+      "index": 74,
+      "prompt_len": 0,
+      "chosen_len": 197,
+      "rejected_len": 192,
+      "chosen_surviving": 197,
+      "rejected_surviving": 192,
+      "issue": null
+    },
+    {
+      "index": 75,
+      "prompt_len": 0,
+      "chosen_len": 38,
+      "rejected_len": 253,
+      "chosen_surviving": 38,
+      "rejected_surviving": 253,
+      "issue": null
+    },
+    {
+      "index": 76,
+      "prompt_len": 0,
+      "chosen_len": 34,
+      "rejected_len": 36,
+      "chosen_surviving": 34,
+      "rejected_surviving": 36,
+      "issue": null
+    },
+    {
+      "index": 77,
+      "prompt_len": 0,
+      "chosen_len": 80,
+      "rejected_len": 80,
+      "chosen_surviving": 80,
+      "rejected_surviving": 80,
+      "issue": null
+    },
+    {
+      "index": 78,
+      "prompt_len": 0,
+      "chosen_len": 47,
+      "rejected_len": 39,
+      "chosen_surviving": 47,
+      "rejected_surviving": 39,
+      "issue": null
+    },
+    {
+      "index": 79,
+      "prompt_len": 0,
+      "chosen_len": 83,
+      "rejected_len": 41,
+      "chosen_surviving": 83,
+      "rejected_surviving": 41,
+      "issue": null
+    },
+    {
+      "index": 80,
+      "prompt_len": 0,
+      "chosen_len": 154,
+      "rejected_len": 149,
+      "chosen_surviving": 154,
+      "rejected_surviving": 149,
+      "issue": null
+    },
+    {
+      "index": 81,
+      "prompt_len": 0,
+      "chosen_len": 29,
+      "rejected_len": 21,
+      "chosen_surviving": 29,
+      "rejected_surviving": 21,
+      "issue": null
+    },
+    {
+      "index": 82,
+      "prompt_len": 0,
+      "chosen_len": 30,
+      "rejected_len": 36,
+      "chosen_surviving": 30,
+      "rejected_surviving": 36,
+      "issue": null
+    },
+    {
+      "index": 83,
+      "prompt_len": 0,
+      "chosen_len": 451,
+      "rejected_len": 513,
+      "chosen_surviving": 451,
+      "rejected_surviving": 512,
+      "issue": "partial_rejected"
+    },
+    {
+      "index": 84,
+      "prompt_len": 0,
+      "chosen_len": 170,
+      "rejected_len": 168,
+      "chosen_surviving": 170,
+      "rejected_surviving": 168,
+      "issue": null
+    },
+    {
+      "index": 85,
+      "prompt_len": 0,
+      "chosen_len": 77,
+      "rejected_len": 190,
+      "chosen_surviving": 77,
+      "rejected_surviving": 190,
+      "issue": null
+    },
+    {
+      "index": 86,
+      "prompt_len": 0,
+      "chosen_len": 73,
+      "rejected_len": 52,
+      "chosen_surviving": 73,
+      "rejected_surviving": 52,
+      "issue": null
+    },
+    {
+      "index": 87,
+      "prompt_len": 0,
+      "chosen_len": 69,
+      "rejected_len": 90,
+      "chosen_surviving": 69,
+      "rejected_surviving": 90,
+      "issue": null
+    },
+    {
+      "index": 88,
+      "prompt_len": 0,
+      "chosen_len": 100,
+      "rejected_len": 128,
+      "chosen_surviving": 100,
+      "rejected_surviving": 128,
+      "issue": null
+    },
+    {
+      "index": 89,
+      "prompt_len": 0,
+      "chosen_len": 111,
+      "rejected_len": 119,
+      "chosen_surviving": 111,
+      "rejected_surviving": 119,
+      "issue": null
+    },
+    {
+      "index": 90,
+      "prompt_len": 0,
+      "chosen_len": 159,
+      "rejected_len": 166,
+      "chosen_surviving": 159,
+      "rejected_surviving": 166,
+      "issue": null
+    },
+    {
+      "index": 91,
+      "prompt_len": 0,
+      "chosen_len": 75,
+      "rejected_len": 70,
+      "chosen_surviving": 75,
+      "rejected_surviving": 70,
+      "issue": null
+    },
+    {
+      "index": 92,
+      "prompt_len": 0,
+      "chosen_len": 109,
+      "rejected_len": 117,
+      "chosen_surviving": 109,
+      "rejected_surviving": 117,
+      "issue": null
+    },
+    {
+      "index": 93,
+      "prompt_len": 0,
+      "chosen_len": 101,
+      "rejected_len": 96,
+      "chosen_surviving": 101,
+      "rejected_surviving": 96,
+      "issue": null
+    },
+    {
+      "index": 94,
+      "prompt_len": 0,
+      "chosen_len": 157,
+      "rejected_len": 162,
+      "chosen_surviving": 157,
+      "rejected_surviving": 162,
+      "issue": null
+    },
+    {
+      "index": 95,
+      "prompt_len": 0,
+      "chosen_len": 118,
+      "rejected_len": 158,
+      "chosen_surviving": 118,
+      "rejected_surviving": 158,
+      "issue": null
+    },
+    {
+      "index": 96,
+      "prompt_len": 0,
+      "chosen_len": 25,
+      "rejected_len": 20,
+      "chosen_surviving": 25,
+      "rejected_surviving": 20,
+      "issue": null
+    },
+    {
+      "index": 97,
+      "prompt_len": 0,
+      "chosen_len": 155,
+      "rejected_len": 153,
+      "chosen_surviving": 155,
+      "rejected_surviving": 153,
+      "issue": null
+    },
+    {
+      "index": 98,
+      "prompt_len": 0,
+      "chosen_len": 118,
+      "rejected_len": 159,
+      "chosen_surviving": 118,
+      "rejected_surviving": 159,
+      "issue": null
+    },
+    {
+      "index": 99,
+      "prompt_len": 0,
+      "chosen_len": 136,
+      "rejected_len": 107,
+      "chosen_surviving": 136,
+      "rejected_surviving": 107,
+      "issue": null
+    }
+  ]
+}

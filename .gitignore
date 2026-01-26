@@ -57,3 +57,6 @@ debug_logs/
 # Egg info
 *.egg-info/
 dynamic_dpo_v1.egg-info/
+
+
+notes/
