@@ -2,6 +2,8 @@ policy_name: W-61/hh-llama32-1b-sft
 ref_name: W-61/hh-llama32-1b-sft
 precision: bf16
 
+use_fsdp: true
+
 dataset:
   dataset_name: jackf857/hh-llama32-1b-rollout-judged
   generated_data: true

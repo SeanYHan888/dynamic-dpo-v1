@@ -15,6 +15,7 @@ from .data.hh_dataset import (
 )
 from .trainers.beta_dpo import BetaDPOConfig, BetaDPOTrainer
 from .trainers.dynamic_beta_dpo import DynamicBetaDPOConfig, DynamicBetaDPOTrainer
+from .trainers.dynamic_beta_dpo_fsdp import DynamicBetaDPOTrainerFSDP
 from .trainers.sft_trainer import run_sft_training
 from .utils.debug import log_dpo_debug_samples
 
@@ -134,7 +135,11 @@ def main_dpo():
                 config=config,
             )
 
-    trainer = DynamicBetaDPOTrainer(
+    # Select trainer based on use_fsdp config flag
+    use_fsdp = config.get("use_fsdp", False)
+    TrainerClass = DynamicBetaDPOTrainerFSDP if use_fsdp else DynamicBetaDPOTrainer
+
+    trainer = TrainerClass(
         model=policy,
         ref_model=ref_model,
         args=training_args,
