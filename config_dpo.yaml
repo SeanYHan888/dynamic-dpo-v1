@@ -10,6 +10,11 @@ dataset:
   val_ratio: 0.1
   seed: 42
   max_len: 512
+  # Truncation settings for proper prompt+completion handling
+  max_prompt_length: 512
+  max_completion_length: 256
+  max_length: 1024
+  truncation_mode: keep_end
   
 dpo_training:
   epochs: 1
@@ -59,6 +64,15 @@ margin_log:
   save_per_rank: False
   log_dir: logs/margins
   dpo_log_dir: logs/dpo_margins
+
+debug:
+  enabled: true
+  output_dir: debug_logs
+  log_all_batches: false
+  max_batches: null
+  first_n: 10
+  random_n: 5
+  console_n: 3
 
 rollout:
   engine: vllm

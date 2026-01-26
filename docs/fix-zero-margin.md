@@ -18,17 +18,56 @@ rejected: "I don’t look like an egg to me!<|eot_id|>"
 
 
 
-
-
-
-
-
-
 Checklist
 
 Verify the bug: inspect dpo_batch_debug.jsonl to confirm batches where prompt_attention_mask length exceeds chosen_input_ids length and labels become all -100.
 Update both trainers to compute log‑probs on prompt+completion sequences (as TRL DPOTrainer does), and remove prompt‑masking on completion‑only inputs.
 Wire truncation controls into DPOConfig (max_prompt_length, max_completion_length, max_length, truncation_mode) from config so prompts cannot swallow completions.
 Re‑run a short slice and confirm margin samples are no longer all‑zero; spot‑check log‑prob sums.
-Suggested Code Changes
+Suggested Code Changes (IMPLEMENTED)
+
+## Fix Applied
+
+The bug has been fixed by modifying both trainers to match TRL's `DPOTrainer.concatenated_forward()` approach:
+
+### Changes Made
+
+1. **Replaced `_build_labels_from_prompt` with `_concatenate_and_build_labels`** in both trainers:
+   - Now properly concatenates `prompt_input_ids` + `completion_input_ids`
+   - Builds labels where prompt tokens are -100, completion tokens are actual tokens
+   - Files: `src/trainers/dynamic_beta_dpo.py`, `src/trainers/beta_dpo.py`
+
+2. **Updated `compute_loss`** to use full prompt+completion sequences:
+   - Forward pass now runs on concatenated sequences (like TRL does)
+   - Log probs computed only on completion tokens (via -100 masking)
+
+3. **Added truncation config support** in `src/cli.py`:
+   - `max_prompt_length`: 512 (default)
+   - `max_completion_length`: 256 (default)
+   - `max_length`: 1024 (default)
+   - `truncation_mode`: "keep_end" (default)
+
+4. **Updated config files** with truncation settings:
+   - `config_dpo.yaml`
+   - `config_beta_dpo.yaml`
+
+### How the Fix Works
+
+**Before (buggy):**
+```python
+# Input: chosen_input_ids = completion only (20 tokens)
+# prompt_attention_mask.sum() = 100 (full prompt length)
+# Result: labels[:, :100] = -100 → entire completion masked!
+```
+
+**After (fixed):**
+```python
+# Concatenate: input_ids = prompt (100) + completion (20) = 120 tokens
+# Labels: [:, :100] = -100 (prompt), [:, 100:] = actual tokens (completion)
+# Result: log_prob computed correctly on completion tokens only
+```
+
+---
+
+## Verification Steps
 

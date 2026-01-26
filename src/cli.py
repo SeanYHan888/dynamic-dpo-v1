@@ -93,6 +93,11 @@ def main_dpo():
         run_name=dpo_train_args["run_name"],
         remove_unused_columns=False,
         output_dir=dpo_train_args["save_dir"],
+        # Truncation settings for proper prompt+completion handling
+        max_prompt_length=int(dataset_cfg.get("max_prompt_length", 512)),
+        max_completion_length=int(dataset_cfg.get("max_completion_length", 256)),
+        max_length=int(dataset_cfg.get("max_length", 1024)),
+        truncation_mode=str(dataset_cfg.get("truncation_mode", "keep_end")),
     )
 
     # Dynamic-beta config
@@ -144,10 +149,22 @@ def main_dpo():
         processing_class=None,
     )
 
-    try:
-        log_dpo_debug_samples(trainer, raw_dataset=debug_train_ds)
-    except Exception:
-        pass
+    # Debug logging
+    debug_cfg = config.get("debug", {})
+    if debug_cfg.get("enabled", False):
+        try:
+            log_dpo_debug_samples(
+                trainer,
+                raw_dataset=debug_train_ds,
+                output_dir=str(debug_cfg.get("output_dir", "debug_logs")),
+                log_all_batches=bool(debug_cfg.get("log_all_batches", False)),
+                max_batches=debug_cfg.get("max_batches"),
+                first_n=int(debug_cfg.get("first_n", 10)),
+                random_n=int(debug_cfg.get("random_n", 5)),
+                console_n=int(debug_cfg.get("console_n", 3)),
+            )
+        except Exception as e:
+            print(f"Debug logging failed: {e}")
 
     trainer.train()
     trainer.save_model(os.path.join(args.output_dir, "final"))
@@ -259,6 +276,11 @@ def main_beta_dpo():
         run_name=dpo_train_args.get("run_name", "beta-dpo"),
         remove_unused_columns=False,
         output_dir=dpo_train_args["save_dir"],
+        # Truncation settings for proper prompt+completion handling
+        max_prompt_length=int(dataset_cfg.get("max_prompt_length", 512)),
+        max_completion_length=int(dataset_cfg.get("max_completion_length", 256)),
+        max_length=int(dataset_cfg.get("max_length", 1024)),
+        truncation_mode=str(dataset_cfg.get("truncation_mode", "keep_end")),
     )
 
     # Beta DPO config
@@ -302,6 +324,23 @@ def main_beta_dpo():
         beta_dpo_cfg=beta_cfg,
         processing_class=None,
     )
+
+    # Debug logging
+    debug_cfg = config.get("debug", {})
+    if debug_cfg.get("enabled", False):
+        try:
+            log_dpo_debug_samples(
+                trainer,
+                raw_dataset=train_ds,
+                output_dir=str(debug_cfg.get("output_dir", "debug_logs")),
+                log_all_batches=bool(debug_cfg.get("log_all_batches", False)),
+                max_batches=debug_cfg.get("max_batches"),
+                first_n=int(debug_cfg.get("first_n", 10)),
+                random_n=int(debug_cfg.get("random_n", 5)),
+                console_n=int(debug_cfg.get("console_n", 3)),
+            )
+        except Exception as e:
+            print(f"Debug logging failed: {e}")
 
     trainer.train()
     trainer.save_model(os.path.join(args.output_dir, "final"))
