@@ -1,5 +1,5 @@
-policy_name: W-61/hh-llama32-1b-sft
-ref_name: W-61/hh-llama32-1b-sft
+policy_name: meta-llama/Meta-Llama-3-8B-Instruct
+ref_name: meta-llama/Meta-Llama-3-8B-Instruct
 precision: bf16
 
 use_fsdp: true
@@ -15,13 +15,13 @@ dataset:
   
 dpo_training:
   epochs: 1
-  batch_size: 16
-  eval_batch_size: 16
+  batch_size: 4            # Increased for 2x RTX PRO 6000
+  eval_batch_size: 4       # Increased for 2x RTX PRO 6000
   learning_rate: 5e-7
   log_steps: 10
   eval_steps: 500
   save_steps: 500
-  gradient_accumulation: 4
+  gradient_accumulation: 16  # Effective batch = 4 * 2 * 16 = 128
   max_grad_norm: 10
   warmup_steps: 120
   report: wandb_dpo_project
