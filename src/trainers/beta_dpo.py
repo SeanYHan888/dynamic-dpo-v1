@@ -166,29 +166,29 @@ class BetaDPOTrainer(DPOTrainer):
         """Concatenate prompt and completion sequences.
 
         Returns:
-            Tuple of (input_ids, attention_mask, prompt_lengths) where prompt_lengths for TRL
-            is a 1D tensor containing the actual prompt length for each sample.
+            Tuple of (input_ids, attention_mask, prompt_seq_len) where prompt_seq_len
+            is the sequence length of the prompt tensor (used to mask the entire prompt region).
         """
-        # Get actual prompt lengths (sum of attention mask)
-        prompt_lengths = prompt_attention_mask.sum(dim=1)  # (batch_size,)
+        # Get prompt sequence length (mask entire prompt region, including padding)
+        prompt_seq_len = prompt_input_ids.size(1)
 
         # Concatenate along sequence dimension
         input_ids = torch.cat([prompt_input_ids, completion_input_ids], dim=1)
         attention_mask = torch.cat([prompt_attention_mask, completion_attention_mask], dim=1)
 
-        return input_ids, attention_mask, prompt_lengths
+        return input_ids, attention_mask, prompt_seq_len
 
-    def _build_labels_with_prompt_lengths(
+    def _build_labels_with_prompt_length(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        prompt_lengths: torch.Tensor,
+        prompt_seq_len: int,
     ) -> torch.Tensor:
-        """Build labels masking prompt tokens based on actual prompt lengths."""
+        """Build labels masking prompt tokens based on prompt sequence length."""
         labels = input_ids.clone()
-        for i, pl in enumerate(prompt_lengths.tolist()):
-            pl = int(min(pl, labels.size(1)))
-            labels[i, :pl] = -100
+        # Mask entire prompt region (same for all samples in batch)
+        labels[:, :prompt_seq_len] = -100
+        # Also mask padding tokens
         labels[attention_mask == 0] = -100
         return labels
 
@@ -213,25 +213,25 @@ class BetaDPOTrainer(DPOTrainer):
         # Check if we need to concatenate prompt + completion (TRL v0.26+ format)
         if "prompt_input_ids" in inputs:
             # Concatenate prompt + completion for chosen
-            chosen_input_ids, chosen_attention_mask, chosen_prompt_lens = self._concat_prompt_completion(
+            chosen_input_ids, chosen_attention_mask, chosen_prompt_len = self._concat_prompt_completion(
                 prompt_input_ids=inputs["prompt_input_ids"],
                 prompt_attention_mask=inputs["prompt_attention_mask"],
                 completion_input_ids=inputs["chosen_input_ids"],
                 completion_attention_mask=inputs["chosen_attention_mask"],
             )
             # Concatenate prompt + completion for rejected
-            rejected_input_ids, rejected_attention_mask, rejected_prompt_lens = self._concat_prompt_completion(
+            rejected_input_ids, rejected_attention_mask, rejected_prompt_len = self._concat_prompt_completion(
                 prompt_input_ids=inputs["prompt_input_ids"],
                 prompt_attention_mask=inputs["prompt_attention_mask"],
                 completion_input_ids=inputs["rejected_input_ids"],
                 completion_attention_mask=inputs["rejected_attention_mask"],
             )
             # Build labels with proper prompt masking
-            chosen_labels = self._build_labels_with_prompt_lengths(
-                chosen_input_ids, chosen_attention_mask, chosen_prompt_lens
+            chosen_labels = self._build_labels_with_prompt_length(
+                chosen_input_ids, chosen_attention_mask, chosen_prompt_len
             )
-            rejected_labels = self._build_labels_with_prompt_lengths(
-                rejected_input_ids, rejected_attention_mask, rejected_prompt_lens
+            rejected_labels = self._build_labels_with_prompt_length(
+                rejected_input_ids, rejected_attention_mask, rejected_prompt_len
             )
         else:
             # Use inputs directly (already concatenated format)
