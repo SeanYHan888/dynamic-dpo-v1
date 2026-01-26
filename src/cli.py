@@ -327,3 +327,7 @@ def main_beta_dpo():
             print(
                 f"Model uploaded successfully to: https://huggingface.co/{hub_model_id}"
             )
+
+
+if __name__ == "__main__":
+    main_dpo()
