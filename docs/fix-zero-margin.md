@@ -8,6 +8,22 @@ Medium (unchanged): Multi‑dataset rollout configs ignore the hf_name in config
 Low (unchanged): apply_chat_template_to_dataset appends a Llama3 header when the prompt/template already contains one; this can bloat prompts and increase truncation likelihood. hh_dataset.py (lines 181-233)
 If you want, I can outline non‑code checks to validate the top issue (e.g., quantify how often chosen_labels are all -100 in dpo_batch_debug.jsonl).
 
+
+
+Example raw records:
+prompt: "<|begin_of_text|><|start_header_id|>user<|end_header_id|> Where does it say that Humpty Dumpty is an egg in the nursery rhyme?<|eot_id|><|start_header_id|>assistant<|end_header_id|> I think Humpty Dumpty may actually be something like the “king’s” egg? But we know the rhyme didn’t appear in print until after the King’s Egg was already a well-known children’s nursery rhyme.<|eot_id|><|start_header_id|>user<|end_header_id|> you look like a egg<|eot_id|><|start_header_id|>assistant<|end_header_id|> "
+chosen: "Humpty Dumpty's a lucky boy<|eot_id|>"
+rejected: "I don’t look like an egg to me!<|eot_id|>"
+
+
+
+
+
+
+
+
+
+
 Checklist
 
 Verify the bug: inspect dpo_batch_debug.jsonl to confirm batches where prompt_attention_mask length exceeds chosen_input_ids length and labels become all -100.
