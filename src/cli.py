@@ -146,7 +146,7 @@ def main_dpo():
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         dynamic_cfg=dyn_cfg,
-        processing_class=None,
+        processing_class=tok,
     )
 
     # Debug logging
@@ -322,7 +322,7 @@ def main_beta_dpo():
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         beta_dpo_cfg=beta_cfg,
-        processing_class=None,
+        processing_class=tok,
     )
 
     # Debug logging

@@ -11,9 +11,9 @@ dataset:
   seed: 42
   max_len: 512
   # Truncation settings for proper prompt+completion handling
-  max_prompt_length: 512
+  max_prompt_length: 256
   max_completion_length: 256
-  max_length: 1024
+  max_length: 512
   truncation_mode: keep_end
   
 dpo_training:
