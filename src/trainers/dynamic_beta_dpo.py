@@ -208,6 +208,38 @@ class DynamicBetaDPOTrainer(DPOTrainer):
             completion_attention_mask=inputs["rejected_attention_mask"],
         )
 
+        # Debug: log tensor shapes and stats before forward pass
+        if self._warmup_count <= 3 or self._warmup_count % 50 == 0:
+            # Input shapes
+            prompt_padded_len = inputs["prompt_input_ids"].shape[1]
+            chosen_comp_padded_len = inputs["chosen_input_ids"].shape[1]
+            rejected_comp_padded_len = inputs["rejected_input_ids"].shape[1]
+
+            # Actual token counts (from attention masks)
+            prompt_actual = inputs["prompt_attention_mask"].sum(dim=1).float()
+            chosen_comp_actual = inputs["chosen_attention_mask"].sum(dim=1).float()
+            rejected_comp_actual = inputs["rejected_attention_mask"].sum(dim=1).float()
+
+            # Concatenated shapes
+            chosen_concat_padded = chosen_input_ids.shape[1]
+            rejected_concat_padded = rejected_input_ids.shape[1]
+            chosen_concat_actual = chosen_attention_mask.sum(dim=1).float()
+            rejected_concat_actual = rejected_attention_mask.sum(dim=1).float()
+
+            # Valid tokens for loss (non -100 labels)
+            chosen_valid = (chosen_labels != -100).sum(dim=1).float()
+            rejected_valid = (rejected_labels != -100).sum(dim=1).float()
+
+            print(f"\n[DEBUG Step {self._warmup_count}] Tensor shapes before forward pass:")
+            print(f"  Batch size: {chosen_input_ids.shape[0]}")
+            print(f"  --- Input from batch ---")
+            print(f"  prompt_input_ids: padded={prompt_padded_len}, actual={prompt_actual.mean():.1f} (min={prompt_actual.min():.0f}, max={prompt_actual.max():.0f})")
+            print(f"  chosen_completion: padded={chosen_comp_padded_len}, actual={chosen_comp_actual.mean():.1f} (min={chosen_comp_actual.min():.0f}, max={chosen_comp_actual.max():.0f})")
+            print(f"  rejected_completion: padded={rejected_comp_padded_len}, actual={rejected_comp_actual.mean():.1f} (min={rejected_comp_actual.min():.0f}, max={rejected_comp_actual.max():.0f})")
+            print(f"  --- After concatenation ---")
+            print(f"  chosen_concat: padded={chosen_concat_padded}, actual={chosen_concat_actual.mean():.1f}, valid_for_loss={chosen_valid.mean():.1f} (min={chosen_valid.min():.0f}, max={chosen_valid.max():.0f})")
+            print(f"  rejected_concat: padded={rejected_concat_padded}, actual={rejected_concat_actual.mean():.1f}, valid_for_loss={rejected_valid.mean():.1f} (min={rejected_valid.min():.0f}, max={rejected_valid.max():.0f})")
+
         # Policy model forward passes (on full prompt+completion sequences)
         policy_chosen_out = model(
             input_ids=chosen_input_ids,
@@ -238,7 +270,8 @@ class DynamicBetaDPOTrainer(DPOTrainer):
         ref_rejected_log_prob = compute_log_prob(logits=ref_rejected_out, labels=rejected_labels)
 
         # Debug: print log prob values to diagnose loss issues
-        if self._warmup_count <= 3:  # Only print first 3 steps
+        # Print first 3 steps, then every 50 steps
+        if self._warmup_count <= 3 or self._warmup_count % 50 == 0:
             chosen_ratio = policy_chosen_log_prob - ref_chosen_log_prob
             rejected_ratio = policy_rejected_log_prob - ref_rejected_log_prob
             margin = chosen_ratio - rejected_ratio
@@ -250,6 +283,7 @@ class DynamicBetaDPOTrainer(DPOTrainer):
             print(f"  chosen_ratio (policy-ref): {chosen_ratio.mean():.4f} (should be ~0 at start)")
             print(f"  rejected_ratio (policy-ref): {rejected_ratio.mean():.4f} (should be ~0 at start)")
             print(f"  margin (chosen-rejected ratio): {margin.mean():.4f}")
+            print(f"  margin min/max: {margin.min():.4f} / {margin.max():.4f}")
             print(f"  expected loss at margin=0: {0.693:.4f} (log(2))")
 
         # Compute DPO loss

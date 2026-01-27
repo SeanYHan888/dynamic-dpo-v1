@@ -130,7 +130,8 @@ def _build_record(
     # Get prompt info
     prompt_input_ids = _tensor_to_list(batch.get("prompt_input_ids"), idx)
     prompt_attention_mask = _tensor_to_list(batch.get("prompt_attention_mask"), idx)
-    prompt_len = len(prompt_input_ids) if prompt_input_ids else 0
+    # Use attention mask sum to get actual token count (not padded length)
+    prompt_len = sum(prompt_attention_mask) if prompt_attention_mask else 0
 
     # Get completion-only info (from original batch)
     chosen_completion_ids = _tensor_to_list(batch.get("chosen_input_ids"), idx)
@@ -159,23 +160,28 @@ def _build_record(
         # Prompt info
         "prompt_input_ids": prompt_input_ids,
         "prompt_attention_mask": prompt_attention_mask,
-        "prompt_len": prompt_len,
+        "prompt_len": prompt_len,  # actual tokens (attention_mask sum)
+        "prompt_padded_len": len(prompt_input_ids) if prompt_input_ids else 0,
         # Completion-only (original batch data)
         "chosen_completion_input_ids": chosen_completion_ids,
         "chosen_completion_attention_mask": chosen_completion_mask,
-        "chosen_completion_len": len(chosen_completion_ids) if chosen_completion_ids else 0,
+        "chosen_completion_len": sum(chosen_completion_mask) if chosen_completion_mask else 0,
+        "chosen_completion_padded_len": len(chosen_completion_ids) if chosen_completion_ids else 0,
         "rejected_completion_input_ids": rejected_completion_ids,
         "rejected_completion_attention_mask": rejected_completion_mask,
-        "rejected_completion_len": len(rejected_completion_ids) if rejected_completion_ids else 0,
+        "rejected_completion_len": sum(rejected_completion_mask) if rejected_completion_mask else 0,
+        "rejected_completion_padded_len": len(rejected_completion_ids) if rejected_completion_ids else 0,
         # Concatenated (prompt + completion)
         "chosen_concat_input_ids": chosen_concat_ids,
         "chosen_concat_attention_mask": chosen_concat_mask,
         "chosen_concat_labels": chosen_concat_labels,
-        "chosen_concat_len": len(chosen_concat_ids) if chosen_concat_ids else 0,
+        "chosen_concat_len": sum(chosen_concat_mask) if chosen_concat_mask else 0,
+        "chosen_concat_padded_len": len(chosen_concat_ids) if chosen_concat_ids else 0,
         "rejected_concat_input_ids": rejected_concat_ids,
         "rejected_concat_attention_mask": rejected_concat_mask,
         "rejected_concat_labels": rejected_concat_labels,
-        "rejected_concat_len": len(rejected_concat_ids) if rejected_concat_ids else 0,
+        "rejected_concat_len": sum(rejected_concat_mask) if rejected_concat_mask else 0,
+        "rejected_concat_padded_len": len(rejected_concat_ids) if rejected_concat_ids else 0,
         # Token counts for log prob computation
         "chosen_valid_tokens": chosen_valid_tokens,
         "rejected_valid_tokens": rejected_valid_tokens,
