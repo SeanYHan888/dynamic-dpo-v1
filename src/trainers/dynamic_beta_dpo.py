@@ -237,6 +237,21 @@ class DynamicBetaDPOTrainer(DPOTrainer):
         ref_chosen_log_prob = compute_log_prob(logits=ref_chosen_out, labels=chosen_labels)
         ref_rejected_log_prob = compute_log_prob(logits=ref_rejected_out, labels=rejected_labels)
 
+        # Debug: print log prob values to diagnose loss issues
+        if self._warmup_count <= 3:  # Only print first 3 steps
+            chosen_ratio = policy_chosen_log_prob - ref_chosen_log_prob
+            rejected_ratio = policy_rejected_log_prob - ref_rejected_log_prob
+            margin = chosen_ratio - rejected_ratio
+            print(f"\n[DEBUG Step {self._warmup_count}]")
+            print(f"  policy_chosen_log_prob: {policy_chosen_log_prob.mean():.4f} (should be large negative)")
+            print(f"  policy_rejected_log_prob: {policy_rejected_log_prob.mean():.4f}")
+            print(f"  ref_chosen_log_prob: {ref_chosen_log_prob.mean():.4f}")
+            print(f"  ref_rejected_log_prob: {ref_rejected_log_prob.mean():.4f}")
+            print(f"  chosen_ratio (policy-ref): {chosen_ratio.mean():.4f} (should be ~0 at start)")
+            print(f"  rejected_ratio (policy-ref): {rejected_ratio.mean():.4f} (should be ~0 at start)")
+            print(f"  margin (chosen-rejected ratio): {margin.mean():.4f}")
+            print(f"  expected loss at margin=0: {0.693:.4f} (log(2))")
+
         # Compute DPO loss
         loss_ten, chosen_rewards, rejected_rewards = dpo_loss_fn(
             policy_chosen_log_prob=policy_chosen_log_prob,
