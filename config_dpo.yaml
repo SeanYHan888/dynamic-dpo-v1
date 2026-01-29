@@ -18,7 +18,7 @@ dataset:
   
 dpo_training:
   epochs: 1
-  batch_size: 16
+  batch_size: 2
   eval_batch_size: 16
   learning_rate: 5e-7
   log_steps: 10
